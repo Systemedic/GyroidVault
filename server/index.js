@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -104,7 +105,8 @@ app.use('/api', (req, res, next) => {
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  message: { error: 'Too many login attempts from this IP, please try again after 15 minutes' }
+  message: { error: 'Too many login attempts from this IP, please try again after 15 minutes' },
+  validate: { xForwardedForHeader: false }
 });
 
 // ─── AUTH ───────────────────────────────────────────────────────────────────
@@ -233,6 +235,20 @@ app.put('/api/auth/profile', authenticate, async (req, res) => {
   } catch (e) { 
     if (e.message.includes('UNIQUE')) return res.status(400).json({ error: 'Username or Email taken' });
     console.error(e); res.status(500).json({ error: 'Profile update failed' }); 
+  }
+});
+
+app.post('/api/auth/api-key', authenticate, (req, res) => {
+  try {
+    const token = jwt.sign(
+      { id: req.user.id, username: req.user.username, role: req.user.role },
+      SECRET
+      // No expiration for API tokens (or set a very long one like 10y)
+    );
+    res.json({ api_key: token });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to generate API Key' });
   }
 });
 
@@ -443,19 +459,25 @@ app.post('/api/library/scan', authenticate, async (req, res) => {
     const { scanLibrary } = require('./utils/library');
     const results = await scanLibrary(LIBRARY_PATH);
     res.json(results);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: e.message });
-  }
-});
+    } catch (e) {
+      console.error('Scan error:', e);
+      res.status(500).json({ error: e.message });
+    }
+  });
 
 app.post('/api/models', authenticate, (req, res) => {
   const userId = req.user.id;
   try {
-    const { name, description, print_tips, source_url, category_id, tags } = req.body;
+    const { name, description, print_tips, source_url, category_id, tags, custom_meta } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
-    const r = run('INSERT INTO models (name,description,print_tips,source_url,category_id,user_id) VALUES (?,?,?,?,?,?)',
-      [name.trim(), description||'', print_tips||'', source_url||'', category_id||null, userId]);
+    
+    let metaStr = '{}';
+    if (custom_meta !== undefined) {
+      metaStr = typeof custom_meta === 'string' ? custom_meta : JSON.stringify(custom_meta);
+    }
+    
+    const r = run('INSERT INTO models (name,description,print_tips,source_url,category_id,custom_meta,user_id) VALUES (?,?,?,?,?,?,?)',
+      [name.trim(), description||'', print_tips||'', source_url||'', category_id||null, metaStr, userId]);
     if (tags?.length) { 
       for (const t of tags) {
         let tagId = t;
@@ -476,9 +498,15 @@ app.put('/api/models/:id', authenticate, (req, res) => {
     const model = get('SELECT * FROM models WHERE id=?', [id]);
     if (!model) return res.status(404).json({ error: 'Model not found' });
     if (req.user.role !== 'admin' && model.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
-    const { name, description, print_tips, source_url, category_id, tags } = req.body;
-    run("UPDATE models SET name=?,description=?,print_tips=?,source_url=?,category_id=?,updated_at=datetime('now') WHERE id=?",
-      [name||model.name, description!==undefined?description:model.description, print_tips!==undefined?print_tips:model.print_tips, source_url!==undefined?source_url:model.source_url, category_id!==undefined?category_id:model.category_id, id]);
+    const { name, description, print_tips, source_url, category_id, tags, custom_meta } = req.body;
+    
+    let metaStr = model.custom_meta;
+    if (custom_meta !== undefined) {
+      metaStr = typeof custom_meta === 'string' ? custom_meta : JSON.stringify(custom_meta);
+    }
+
+    run("UPDATE models SET name=?,description=?,print_tips=?,source_url=?,category_id=?,custom_meta=?,updated_at=datetime('now') WHERE id=?",
+      [name||model.name, description!==undefined?description:model.description, print_tips!==undefined?print_tips:model.print_tips, source_url!==undefined?source_url:model.source_url, category_id!==undefined?category_id:model.category_id, metaStr, id]);
     if (tags !== undefined) {
       run('DELETE FROM model_tags WHERE model_id=?', [id]);
       if (tags?.length) {
@@ -586,6 +614,30 @@ app.post('/api/models/bulk-update', authenticate, (req, res) => {
 
 // ─── FILES ──────────────────────────────────────────────────────────────────
 
+app.post('/api/upload-slicer', authenticate, upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const filename = req.file.originalname;
+    const name = path.parse(filename).name;
+    const userId = req.user.id;
+    
+    // Create new model
+    const r = run('INSERT INTO models (name, user_id) VALUES (?, ?)', [name, userId]);
+    const modelId = r.lastId;
+    
+    // Save file
+    const fileType = getFileType(filename);
+    const size = fs.statSync(req.file.path).size;
+    run('INSERT INTO files (model_id, filename, original_name, file_size, file_type) VALUES (?,?,?,?,?)',
+      [modelId, req.file.filename, filename, size, fileType]);
+      
+    res.status(201).json({ success: true, model_id: modelId, message: 'Uploaded successfully' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to process slicer upload' });
+  }
+});
+
 app.post('/api/models/:id/files', authenticate, upload.array('files', 20), (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -596,6 +648,23 @@ app.post('/api/models/:id/files', authenticate, upload.array('files', 20), (req,
     const { parseGcodeMetadata } = require('./utils/gcode');
     const uploaded = [];
     for (const file of req.files) {
+      // Malware Scanning / Magic Bytes validation
+      try {
+        const buffer = Buffer.alloc(4);
+        const fd = fs.openSync(file.path, 'r');
+        fs.readSync(fd, buffer, 0, 4, 0);
+        fs.closeSync(fd);
+        const hex = buffer.toString('hex').toUpperCase();
+        // MZ = 4D5A, ELF = 7F454C46, Script = 2321 (#!...)
+        if (hex.startsWith('4D5A') || hex.startsWith('7F454C46') || hex.startsWith('2321')) {
+          fs.unlinkSync(file.path);
+          console.error(`[SECURITY] Blocked upload of ${file.originalname}: Executable magic bytes detected (${hex})`);
+          continue;
+        }
+      } catch (err) {
+        console.error('Failed to validate magic bytes for', file.originalname, err);
+      }
+      
       const ft = getFileType(file.originalname);
       let metadata = null;
       if (ft === 'gcode') {
@@ -704,6 +773,57 @@ app.delete('/api/files/:id', authenticate, (req, res) => {
     run("UPDATE models SET updated_at=datetime('now') WHERE id=?", [file.model_id]);
     res.json({ success: true });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to delete file' }); }
+});
+
+app.post('/api/files/:id/send-to-printer', authenticate, async (req, res) => {
+  try {
+    const { printer_id } = req.body;
+    if (!printer_id) return res.status(400).json({ error: 'Printer ID required' });
+    
+    const file = get('SELECT f.*, m.user_id as model_owner FROM files f JOIN models m ON f.model_id = m.id WHERE f.id=?', [Number(req.params.id)]);
+    if (!file) return res.status(404).json({ error: 'File not found' });
+    
+    const settings = get("SELECT value FROM system_settings WHERE key='printers'");
+    if (!settings || !settings.value) return res.status(400).json({ error: 'No printers configured' });
+    
+    const printers = JSON.parse(settings.value);
+    const printer = printers.find(p => p.id === String(printer_id));
+    if (!printer) return res.status(404).json({ error: 'Printer not found' });
+    
+    const targetPath = file.library_path || path.join(UPLOADS_DIR, file.filename);
+    if (!fs.existsSync(targetPath)) return res.status(404).json({ error: 'Physical file not found on disk' });
+    
+    const fileData = fs.readFileSync(targetPath);
+    const blob = new Blob([fileData]);
+    
+    const fd = new FormData();
+    fd.append('file', blob, file.original_name || file.filename);
+    fd.append('root', 'gcodes');
+    
+    const moonrakerUrl = `${printer.url}/server/files/upload`;
+    
+    const headers = {};
+    if (printer.api_key) {
+      headers['X-Api-Key'] = printer.api_key;
+    }
+
+    const response = await fetch(moonrakerUrl, {
+      method: 'POST',
+      headers,
+      body: fd
+    });
+    
+    if (!response.ok) {
+      const txt = await response.text();
+      return res.status(response.status).json({ error: 'Moonraker error: ' + txt });
+    }
+    
+    const result = await response.json();
+    res.json({ success: true, result });
+  } catch (e) {
+    console.error('Send to printer error:', e);
+    res.status(500).json({ error: 'Failed to send to printer: ' + e.message });
+  }
 });
 
 // ─── PROJECTS ───────────────────────────────────────────────────────────────
@@ -1177,6 +1297,10 @@ app.get('/api/browse', (req, res) => {
     const thumbMap = new Map();
     for (const row of dbThumbs) thumbMap.set(row.library_path, row.thumbnail);
 
+    const dbFilesList = all('SELECT model_id, library_path FROM files WHERE library_path IS NOT NULL');
+    const fileModelMap = new Map();
+    for (const row of dbFilesList) fileModelMap.set(row.library_path, row.model_id);
+
     const folders = [];
     const files = [];
     
@@ -1192,8 +1316,8 @@ app.get('/api/browse', (req, res) => {
         let folderThumbs = [];
         const folderFullPath = path.join(fullPath, item.name);
         
-        const folderModel = get('SELECT thumbnail FROM models WHERE library_path = ? AND thumbnail IS NOT NULL', [folderFullPath]);
-        if (folderModel) {
+        const folderModel = get('SELECT id, thumbnail FROM models WHERE library_path = ?', [folderFullPath]);
+        if (folderModel && folderModel.thumbnail) {
           folderThumbs.push(getThumbUrl(folderModel.thumbnail, folderFullPath));
         }
         
@@ -1213,7 +1337,8 @@ app.get('/api/browse', (req, res) => {
           name: item.name,
           path: reqPath ? `${reqPath}/${item.name}` : item.name,
           itemCount,
-          thumbnails: folderThumbs
+          thumbnails: folderThumbs,
+          model_id: folderModel ? folderModel.id : null
         });
       } else {
         const ext = path.extname(item.name).toLowerCase();
@@ -1243,7 +1368,8 @@ app.get('/api/browse', (req, res) => {
             type: fileType,
             url: encodedUrl,
             thumbnailUrl,
-            folderPath: reqPath
+            folderPath: reqPath,
+            model_id: fileModelMap.get(filePath) || null
           });
         }
       }
@@ -1312,6 +1438,10 @@ app.get('/api/browse/search', (req, res) => {
     const thumbMap = new Map();
     for (const row of dbThumbs) thumbMap.set(row.library_path, row.thumbnail);
 
+    const dbFilesList = all('SELECT model_id, library_path FROM files WHERE library_path IS NOT NULL');
+    const fileModelMap = new Map();
+    for (const row of dbFilesList) fileModelMap.set(row.library_path, row.model_id);
+
     const folders = [];
     const files = [];
     const supportedExts = ['.stl', '.gcode', '.3mf', '.step', '.obj'];
@@ -1334,10 +1464,8 @@ app.get('/api/browse/search', (req, res) => {
             let folderThumbs = [];
             const folderFullPath = childFull;
             
-            const folderModel = get('SELECT thumbnail FROM models WHERE library_path = ? AND thumbnail IS NOT NULL', [folderFullPath]);
-            if (folderModel) {
-              folderThumbs.push(getThumbUrl(folderModel.thumbnail, folderFullPath));
-            }
+            const folderModel = get('SELECT id, thumbnail FROM models WHERE library_path = ?', [folderFullPath]);
+            if (folderModel && folderModel.thumbnail) folderThumbs.push(getThumbUrl(folderModel.thumbnail, folderFullPath));
             
             const folderPrefix = folderFullPath + path.sep;
             for (const [libPath, thumb] of thumbMap.entries()) {
@@ -1349,7 +1477,13 @@ app.get('/api/browse/search', (req, res) => {
                 }
               }
             }
-            folders.push({ name: item.name, path: childRel, itemCount, thumbnails: folderThumbs });
+            folders.push({
+              name: item.name,
+              path: childRel,
+              itemCount,
+              thumbnails: folderThumbs,
+              model_id: folderModel ? folderModel.id : null
+            });
           }
           walk(childFull, childRel);
         } else {
@@ -1373,7 +1507,15 @@ app.get('/api/browse/search', (req, res) => {
                 thumbnailUrl = getThumbUrl(thumb, path.dirname(childFull));
               }
 
-              files.push({ name: item.name, size: stat.size, type: fileType, url: encodedUrl, thumbnailUrl, folderPath: relPath });
+              files.push({
+                name: item.name,
+                size: stat.size,
+                type: fileType,
+                url: encodedUrl,
+                thumbnailUrl,
+                folderPath: relPath,
+                model_id: fileModelMap.get(filePath) || null
+              });
             }
           }
         }
@@ -1555,6 +1697,17 @@ function setupBackgroundScanner() {
 (async () => {
   await initDatabase();
   setUploadsDir(UPLOADS_DIR);
+
+  // Graceful shutdown to save DB before process exit
+  const { saveDb } = require('./database');
+  const shutdown = () => {
+    console.log('\nShutting down server, saving database...');
+    saveDb(true);
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+  process.on('SIGUSR2', shutdown); // nodemon restart signal
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`GyroidVault running on http://0.0.0.0:${PORT}`);

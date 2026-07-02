@@ -53,7 +53,115 @@ const App = {
     this.checkUpdates();
     this.updateUserNav();
     this.updateThemeIcon();
+    this.initPrinters();
     this.route();
+  },
+
+  async initPrinters() {
+    if (!this.currentUser || this.currentUser.role !== 'admin') return;
+    try {
+      const config = await API.getSystemSettings();
+      if (!config.printers) return;
+      const printers = JSON.parse(config.printers);
+      if (!printers || printers.length === 0) return;
+      
+      const container = document.getElementById('nav-printers-widget');
+      if (!container) return;
+      
+      this.printerSockets = this.printerSockets || {};
+      this.printerStatus = this.printerStatus || {};
+      
+      container.innerHTML = printers.map(p => `
+        <div id="printer-widget-${p.id}" style="display:flex; flex-direction:column; justify-content:center; align-items:flex-end; font-size:0.7rem; color:var(--text-secondary); background:rgba(255,255,255,0.05); padding:2px 8px; border-radius:4px; border:1px solid transparent;">
+          <div style="font-weight:600; color:var(--text-primary); display:flex; align-items:center; gap:4px">
+            <span class="status-dot" style="width:6px;height:6px;border-radius:50%;background:var(--text-muted)"></span>
+            ${p.name}
+          </div>
+          <div class="printer-temps" style="display:none; gap:6px; margin-top:2px">
+            <span class="nozzle-temp">N: --°C</span>
+            <span class="bed-temp">B: --°C</span>
+          </div>
+        </div>
+      `).join('');
+      
+      printers.forEach(p => {
+        if (this.printerSockets[p.id]) return;
+        
+        try {
+          const wsUrl = new URL('/websocket', p.url);
+          wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+          const ws = new WebSocket(wsUrl.toString());
+          this.printerSockets[p.id] = ws;
+          
+          ws.onopen = () => {
+            const widget = document.getElementById(`printer-widget-${p.id}`);
+            if(widget) {
+              const dot = widget.querySelector('.status-dot');
+              if (dot) dot.style.background = 'var(--accent-green)';
+              widget.querySelector('.printer-temps').style.display = 'flex';
+            }
+            // Subscribe to temperature updates
+            ws.send(JSON.stringify({
+              jsonrpc: "2.0",
+              method: "printer.objects.subscribe",
+              params: {
+                objects: {
+                  extruder: ["temperature", "target"],
+                  heater_bed: ["temperature", "target"]
+                }
+              },
+              id: 1
+            }));
+          };
+          
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(event.data);
+              if (msg.method === 'notify_status_update' && msg.params && msg.params[0]) {
+                const status = msg.params[0];
+                const widget = document.getElementById(`printer-widget-${p.id}`);
+                if (!widget) return;
+                
+                if (status.extruder && status.extruder.temperature !== undefined) {
+                  const nt = widget.querySelector('.nozzle-temp');
+                  if (nt) nt.innerText = `N: ${Math.round(status.extruder.temperature)}°C`;
+                }
+                if (status.heater_bed && status.heater_bed.temperature !== undefined) {
+                  const bt = widget.querySelector('.bed-temp');
+                  if (bt) bt.innerText = `B: ${Math.round(status.heater_bed.temperature)}°C`;
+                }
+              }
+              if (msg.id === 1 && msg.result && msg.result.status) {
+                // Initial response
+                const status = msg.result.status;
+                const widget = document.getElementById(`printer-widget-${p.id}`);
+                if (!widget) return;
+                if (status.extruder) {
+                  const nt = widget.querySelector('.nozzle-temp');
+                  if (nt) nt.innerText = `N: ${Math.round(status.extruder.temperature)}°C`;
+                }
+                if (status.heater_bed) {
+                  const bt = widget.querySelector('.bed-temp');
+                  if (bt) bt.innerText = `B: ${Math.round(status.heater_bed.temperature)}°C`;
+                }
+              }
+            } catch(e){}
+          };
+          
+          ws.onclose = () => {
+            const widget = document.getElementById(`printer-widget-${p.id}`);
+            if(widget) {
+              const dot = widget.querySelector('.status-dot');
+              if (dot) dot.style.background = 'var(--error)';
+              widget.querySelector('.printer-temps').style.display = 'none';
+            }
+            delete this.printerSockets[p.id];
+          };
+        } catch(e) {
+          console.error('Failed to connect to printer WS', p.url, e);
+        }
+      });
+    } catch(err) { console.error('Failed to init printers', err); }
   },
 
   async checkUpdates() {
@@ -177,6 +285,17 @@ const App = {
 
   navigate(path) {
     location.hash = path;
+  },
+
+  previewTheme() {
+    const t = document.getElementById('theme-selector').value;
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('gv_theme', t);
+  },
+
+  setAccent(a) {
+    document.documentElement.setAttribute('data-accent', a);
+    localStorage.setItem('gv_accent', a);
   },
 
   // ── Toast ──
@@ -446,10 +565,12 @@ const App = {
         return;
       }
       
+      const viewMode = localStorage.getItem('gv_view_mode') || 'grid';
       grid.innerHTML = `
-        <div class="model-grid">${models.map(m => UI.modelCard(m)).join('')}</div>
+        <div class="model-grid ${viewMode === 'list' ? 'models-list-view' : ''}">${models.map(m => UI.modelCard(m)).join('')}</div>
         ${UI.pagination(totalPages, currentPage)}
       `;
+      this.setViewMode(viewMode); // highlight correct button
       this.renderBulkBar();
       if (typeof Viewer !== 'undefined' && Viewer.generateThumbnails) {
         setTimeout(() => Viewer.generateThumbnails(), 50);
@@ -457,6 +578,23 @@ const App = {
     } catch (e) {
       console.error(e);
       document.getElementById('models-grid').innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">Failed to load models</div></div>';
+    }
+  },
+
+  setViewMode(mode) {
+    localStorage.setItem('gv_view_mode', mode);
+    const viewGridBtn = document.getElementById('view-mode-grid');
+    const viewListBtn = document.getElementById('view-mode-list');
+    if (viewGridBtn) viewGridBtn.style.color = mode === 'grid' ? 'var(--accent-cyan)' : 'inherit';
+    if (viewListBtn) viewListBtn.style.color = mode === 'list' ? 'var(--accent-cyan)' : 'inherit';
+    
+    const gridContainer = document.querySelector('#models-grid .model-grid');
+    if (gridContainer) {
+      if (mode === 'list') {
+        gridContainer.classList.add('models-list-view');
+      } else {
+        gridContainer.classList.remove('models-list-view');
+      }
     }
   },
 
@@ -896,6 +1034,20 @@ const App = {
     } catch(e) { this.toast(e.message, 'error'); }
   },
 
+  async generateApiKey() {
+    try {
+      const res = await API.generateApiKey();
+      if (res.api_key) {
+        const resultDiv = document.getElementById('api-key-result');
+        if (resultDiv) {
+          resultDiv.textContent = res.api_key;
+          resultDiv.style.display = 'block';
+          this.toast('API Key generated successfully', 'success');
+        }
+      }
+    } catch(e) { this.toast(e.message || 'Failed to generate API key', 'error'); }
+  },
+
   async handleSaveSMTP(e) {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -917,6 +1069,40 @@ const App = {
       await this.loadViewMode(); // refresh the cached view mode
       this.toast('System settings saved');
     } catch(e) { this.toast(e.message, 'error'); }
+  },
+
+    async handleAddPrinter(e) {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const newPrinter = { 
+        id: Date.now().toString(), 
+        name: fd.get('name'), 
+        url: fd.get('url').replace(/\/$/, ''),
+        api_key: fd.get('api_key') || ''
+      };
+    
+    try {
+      const config = await API.getSystemSettings();
+      let printers = [];
+      try { if (config.printers) printers = JSON.parse(config.printers); } catch(e){}
+      printers.push(newPrinter);
+      await API.saveSystemSettings({ printers: JSON.stringify(printers) });
+      this.toast('Printer added');
+      this.renderSettings();
+    } catch(err) { this.toast(err.message, 'error'); }
+  },
+
+  async deletePrinter(id) {
+    if (!confirm('Remove this printer?')) return;
+    try {
+      const config = await API.getSystemSettings();
+      let printers = [];
+      try { if (config.printers) printers = JSON.parse(config.printers); } catch(e){}
+      printers = printers.filter(p => p.id !== id);
+      await API.saveSystemSettings({ printers: JSON.stringify(printers) });
+      this.toast('Printer removed');
+      this.renderSettings();
+    } catch(err) { this.toast(err.message, 'error'); }
   },
   
   async testSMTP(e) {
@@ -992,7 +1178,118 @@ const App = {
 
   async renderProfile() {
     if (!this.currentUser) return this.navigate('/');
-    this.el.innerHTML = UI.profilePage(this.currentUser);
+    
+    this.el.innerHTML = `
+      <div class="page-header">
+        <div><h1 class="page-title">My Profile</h1><p class="page-subtitle">Manage your account settings and preferences</p></div>
+      </div>
+      <div class="settings-tabs" style="display:flex;gap:8px;margin-bottom:24px;border-bottom:1px solid var(--border);padding-bottom:1px">
+        <button class="tab-btn active" data-tab="account" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Account Details</button>
+        <button class="tab-btn" data-tab="appearance" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Local Appearance</button>
+        <button class="tab-btn" data-tab="api" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">API & Integrations</button>
+      </div>
+      <div id="profile-content"></div>`;
+
+    const content = this.el.querySelector('#profile-content');
+    const tabs = this.el.querySelectorAll('.tab-btn');
+    const user = this.currentUser;
+
+    const switchTab = (tab) => {
+      tabs.forEach(t => {
+        const active = t.dataset.tab === tab;
+        t.style.color = active ? 'var(--accent-cyan)' : 'var(--text-secondary)';
+        t.style.borderBottomColor = active ? 'var(--accent-cyan)' : 'transparent';
+      });
+
+      if (tab === 'account') {
+        content.innerHTML = `
+          <div class="glass-panel">
+            <div class="panel-header"><div class="panel-title">Account Details</div></div>
+            <div class="panel-body">
+              <form onsubmit="App.handleUpdateProfile(event)" class="form-grid">
+                <div class="form-group">
+                  <label class="form-label">Username</label>
+                  <input type="text" name="username" value="${user.username}" required class="form-input">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Email Address</label>
+                  <input type="email" name="email" value="${user.email || ''}" required class="form-input">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">New Password</label>
+                  <input type="password" name="password" placeholder="Leave blank to keep current" class="form-input">
+                  <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px;">Must be at least 8 characters and contain letters and numbers.</p>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Preferred Slicer</label>
+                  <select name="preferred_slicer" class="form-select">
+                    <option value="" ${!user.preferred_slicer ? 'selected' : ''}>None (Ask every time)</option>
+                    <option value="orcaslicer" ${user.preferred_slicer === 'orcaslicer' ? 'selected' : ''}>OrcaSlicer</option>
+                    <option value="elegooslicer" ${user.preferred_slicer === 'elegooslicer' ? 'selected' : ''}>Elegoo Slicer</option>
+                    <option value="cura" ${user.preferred_slicer === 'cura' ? 'selected' : ''}>Ultimaker Cura</option>
+                  </select>
+                </div>
+                <div style="margin-top:24px; padding-top:20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end;">
+                  <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      } else if (tab === 'appearance') {
+        content.innerHTML = `
+          <div class="glass-panel">
+            <div class="panel-header"><div class="panel-title">Local Appearance</div></div>
+            <div class="panel-body">
+              <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px;">These UI settings are saved only to your current browser context.</p>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label class="form-label">App Theme</label>
+                  <select id="theme-selector" class="form-select" onchange="App.previewTheme()">
+                    <option value="glass" ${localStorage.getItem('gv_theme') === 'glass' || !localStorage.getItem('gv_theme') ? 'selected' : ''}>Glass (Default)</option>
+                    <option value="industrial" ${localStorage.getItem('gv_theme') === 'industrial' ? 'selected' : ''}>Industrial</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                  <label class="form-label">Accent Color</label>
+                  <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+                    <button type="button" class="btn" style="background:#00d4ff; width:36px; height:36px; padding:0; border-radius:50%; box-shadow: ${localStorage.getItem('gv_accent') === 'cyan' || !localStorage.getItem('gv_accent') ? '0 0 0 2px var(--bg-card), 0 0 0 4px #00d4ff' : 'none'}" onclick="App.setAccent('cyan'); App.renderProfile();" title="Cyan"></button>
+                    <button type="button" class="btn" style="background:#ff4444; width:36px; height:36px; padding:0; border-radius:50%; box-shadow: ${localStorage.getItem('gv_accent') === 'red' ? '0 0 0 2px var(--bg-card), 0 0 0 4px #ff4444' : 'none'}" onclick="App.setAccent('red'); App.renderProfile();" title="Red"></button>
+                    <button type="button" class="btn" style="background:#a855f7; width:36px; height:36px; padding:0; border-radius:50%; box-shadow: ${localStorage.getItem('gv_accent') === 'purple' ? '0 0 0 2px var(--bg-card), 0 0 0 4px #a855f7' : 'none'}" onclick="App.setAccent('purple'); App.renderProfile();" title="Purple"></button>
+                    <button type="button" class="btn" style="background:#f97316; width:36px; height:36px; padding:0; border-radius:50%; box-shadow: ${localStorage.getItem('gv_accent') === 'orange' ? '0 0 0 2px var(--bg-card), 0 0 0 4px #f97316' : 'none'}" onclick="App.setAccent('orange'); App.renderProfile();" title="Orange"></button>
+                    <button type="button" class="btn" style="background:#3b82f6; width:36px; height:36px; padding:0; border-radius:50%; box-shadow: ${localStorage.getItem('gv_accent') === 'blue' ? '0 0 0 2px var(--bg-card), 0 0 0 4px #3b82f6' : 'none'}" onclick="App.setAccent('blue'); App.renderProfile();" title="Blue"></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (tab === 'api') {
+        content.innerHTML = `
+          <div class="glass-panel">
+            <div class="panel-header"><div class="panel-title">API & Integrations</div></div>
+            <div class="panel-body">
+              <div class="form-group" style="margin-bottom:0">
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Generate an API key to allow external tools (like OrcaSlicer post-processing scripts) to securely interact with your GyroidVault account. Keep this key secret.</p>
+                <div id="api-key-result" style="display:none; margin-bottom:15px; background:rgba(16,185,129,0.1); padding:12px; border-radius:var(--radius-sm); border:1px solid var(--success); color:var(--success); word-break:break-all; font-family:monospace; font-size:0.85rem"></div>
+                <button type="button" class="btn btn-secondary" onclick="App.generateApiKey()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                  Generate New API Key
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    };
+
+    tabs.forEach(t => t.addEventListener('click', () => {
+      localStorage.setItem('gv_profile_tab', t.dataset.tab);
+      switchTab(t.dataset.tab);
+    }));
+    
+    const defaultTab = localStorage.getItem('gv_profile_tab') || 'account';
+    switchTab(defaultTab);
   },
 
   // ─── Collections ────────────────────────────────────────────────────────
@@ -1284,6 +1581,7 @@ const App = {
         <button class="tab-btn active" data-tab="categories" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Categories</button>
         <button class="tab-btn" data-tab="tags" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Tags</button>
         <button class="tab-btn" data-tab="materials" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Materials</button>
+        ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="printers" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Printers</button>' : ''}
         ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="system" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">System</button>' : ''}
         ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="smtp" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">SMTP & Mail</button>' : ''}
         ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="users" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Users</button>' : ''}
@@ -1312,6 +1610,15 @@ const App = {
         } else if (tab === 'materials') {
           const mats = await API.getMaterials();
           content.innerHTML = `<div class="settings-grid">${UI.settingsPanel('Materials', mats, 'materials')}</div>`;
+        } else if (tab === 'printers') {
+          const config = await API.getSystemSettings();
+          let printers = [];
+          try { if (config.printers) printers = JSON.parse(config.printers); } catch(e){}
+          content.innerHTML = `
+            <div class="glass-panel" style="margin-bottom:24px">
+              <div class="panel-header"><div class="panel-title">🖨️ 3D Printers (Moonraker)</div></div>
+              <div class="panel-body">${UI.printersSettingsForm(printers)}</div>
+            </div>`;
         } else if (tab === 'smtp') {
           const config = await API.getSMTPSettings();
           content.innerHTML = `
@@ -1412,6 +1719,8 @@ const App = {
     setTimeout(() => document.getElementById('model-name-input')?.focus(), 100);
   },
 
+
+
   handleCreateFileSelect(e) {
     const files = Array.from(e.target.files);
     this.addPendingFiles(files);
@@ -1491,6 +1800,20 @@ const App = {
     input.focus();
   },
 
+  addCustomMetaField() {
+    const container = document.getElementById('custom-meta-container');
+    if (!container) return;
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex; gap:8px; margin-bottom:8px;';
+    div.className = 'custom-meta-row';
+    div.innerHTML = `
+      <input type="text" class="form-input" name="meta_keys[]" placeholder="Key (e.g. Designer)" style="flex:1" required>
+      <input type="text" class="form-input" name="meta_values[]" placeholder="Value" style="flex:2" required>
+      <button type="button" class="btn btn-danger btn-sm" onclick="this.parentElement.remove()">X</button>
+    `;
+    container.appendChild(div);
+  },
+
   async showEditModel(id) {
     try {
       const [model] = await Promise.all([API.getModel(id), this.loadCache()]);
@@ -1505,12 +1828,21 @@ const App = {
       if (c.value.startsWith('NEW:')) return c.value.substring(4);
       return parseInt(c.value);
     });
+    
+    const metaKeys = form.getAll('meta_keys[]');
+    const metaValues = form.getAll('meta_values[]');
+    const customMeta = {};
+    for (let i = 0; i < metaKeys.length; i++) {
+      if (metaKeys[i].trim()) customMeta[metaKeys[i].trim()] = metaValues[i].trim();
+    }
+    
     const data = {
       name: form.get('name'),
       description: form.get('description'),
       print_tips: form.get('print_tips'),
       source_url: form.get('source_url'),
       category_id: form.get('category_id') || null,
+      custom_meta: customMeta,
       tags,
     };
     
@@ -1641,6 +1973,42 @@ const App = {
       this.toast('File deleted');
       this.closeModal();
       this.renderModelDetail(modelId);
+    } catch (err) { this.toast(err.message, 'error'); }
+  },
+
+  async sendToPrinter(fileId) {
+    try {
+      const config = await API.getSystemSettings();
+      let printers = [];
+      try { if (config.printers) printers = JSON.parse(config.printers); } catch(e){}
+      
+      if (printers.length === 0) {
+        return this.toast('No printers configured. Go to Settings > Printers.', 'error');
+      }
+      
+      if (printers.length === 1) {
+        this.toast('Sending to ' + printers[0].name + '...', 'info');
+        await API.sendToPrinter(fileId, printers[0].id);
+        return this.toast('G-Code sent successfully to ' + printers[0].name);
+      }
+      
+      this.openModal('Send to Moonraker', UI.sendToPrinterForm(fileId, printers));
+    } catch(err) {
+      this.toast(err.message, 'error');
+    }
+  },
+
+  async handleSendToPrinter(e, fileId) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const printerId = fd.get('printer_id');
+    const select = e.target.querySelector('select');
+    const printerName = select.options[select.selectedIndex].text.split(' (')[0];
+    try {
+      this.toast('Sending to ' + printerName + '...', 'info');
+      this.closeModal();
+      await API.sendToPrinter(fileId, printerId);
+      this.toast('G-Code sent successfully to ' + printerName);
     } catch (err) { this.toast(err.message, 'error'); }
   },
 

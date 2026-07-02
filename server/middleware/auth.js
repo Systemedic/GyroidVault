@@ -2,14 +2,21 @@ const jwt = require('jsonwebtoken');
 const SECRET = process.env.JWT_SECRET || 'printvault-secret-key-2026';
 
 function authenticate(req, res, next) {
-  const token = req.cookies.pv_token;
+  let token = req.cookies.pv_token;
+  let isApiToken = false;
+  
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+    isApiToken = true;
+  }
+  
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const decoded = jwt.verify(token, SECRET);
     
-    // CSRF protection for state-changing methods
-    if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
+    // CSRF protection for state-changing methods (skip if using API token)
+    if (!isApiToken && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method)) {
       const csrfToken = req.headers['x-csrf-token'];
       if (!csrfToken || csrfToken !== decoded.csrfToken) {
         return res.status(403).json({ error: 'CSRF token missing or invalid' });

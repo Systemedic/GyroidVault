@@ -16,7 +16,44 @@ const Viewer = {
     const container = document.getElementById(containerId);
     if (!container || typeof THREE === 'undefined') return;
     const is3MF = fileType === '3mf' || (!fileType && fileUrl.toLowerCase().includes('.3mf'));
-    console.log('[Viewer] Create:', { fileUrl, fileType, is3MF });
+    const isGcode = fileType === 'gcode' || (!fileType && fileUrl.toLowerCase().includes('.gcode'));
+    console.log('[Viewer] Create:', { fileUrl, fileType, is3MF, isGcode });
+    
+    if (isGcode && typeof GCodePreview !== 'undefined') {
+      container.innerHTML = '<canvas style="width:100%;height:100%"></canvas>';
+      const canvas = container.querySelector('canvas');
+      const preview = GCodePreview.init({
+        canvas: canvas,
+        topLayerColor: new THREE.Color(0x00d4ff).getHex(),
+        lastSegmentColor: new THREE.Color(0xffffff).getHex(),
+        buildVolume: {x: 250, y: 250, z: 250},
+        initialCameraPosition: [0, 400, 450],
+        backgroundColor: 0x161625
+      });
+      
+      const viewer = { preview, isGcode: true, animId: null, renderer: { dispose: () => preview.dispose && preview.dispose() } };
+      this.activeViewers.push(viewer);
+      
+      // Load G-Code via fetch and process chunks
+      fetch(fileUrl)
+        .then(response => {
+          if (!response.body) throw new Error('ReadableStream not supported.');
+          return preview._readFromStream(response.body);
+        })
+        .then(() => {
+          console.log('G-Code loaded');
+        })
+        .catch(err => {
+          console.error('GCode load error:', err);
+          container.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);font-size:.85rem;flex-direction:column;gap:8px">
+            <span style="font-size:1.5rem">⚠️</span>
+            <span>Could not load 3D G-Code preview</span>
+          </div>`;
+        });
+        
+      return viewer;
+    }
+
     if (typeof fflate !== 'undefined') { 
       window.fflate = fflate; 
       THREE.fflate = fflate; 
@@ -108,6 +145,7 @@ const Viewer = {
           object.position.z = -center.z * scale;
           
           targetObject = object;
+          if (typeof viewer !== 'undefined') viewer.targetObject = targetObject;
           scene.add(object);
         } else {
           const geometry = object;
@@ -143,6 +181,7 @@ const Viewer = {
           // geometry Z (height) -> world Y.
           mesh.position.y = (size.z * scale) / 2;
           targetObject = mesh;
+          if (typeof viewer !== 'undefined') viewer.targetObject = targetObject;
           scene.add(mesh);
         }
 
@@ -232,6 +271,41 @@ const Viewer = {
   },
 
   // Auto-generate thumbnails for dashboard cards
+  toggleWireframe() {
+    for (const v of this.activeViewers) {
+      if (v.targetObject) {
+        v.targetObject.traverse((child) => {
+          if (child.isMesh && child.material) {
+            child.material.wireframe = !child.material.wireframe;
+            child.material.needsUpdate = true;
+          }
+        });
+      }
+    }
+  },
+
+  toggleXRay() {
+    for (const v of this.activeViewers) {
+      if (v.targetObject) {
+        v.targetObject.traverse((child) => {
+          if (child.isMesh && child.material) {
+            const isXray = child.material.opacity < 1;
+            if (isXray) {
+              child.material.opacity = 1.0;
+              child.material.transparent = false;
+              child.material.depthWrite = true;
+            } else {
+              child.material.opacity = 0.3;
+              child.material.transparent = true;
+              child.material.depthWrite = false;
+            }
+            child.material.needsUpdate = true;
+          }
+        });
+      }
+    }
+  },
+
   async generateThumbnails() {
     if (typeof THREE === 'undefined' || !THREE.STLLoader) return;
     const targets = document.querySelectorAll('.stl-thumb-target');

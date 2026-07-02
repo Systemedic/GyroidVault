@@ -83,6 +83,29 @@ function parseGcodeMetadata(filePath) {
         /;\s*bed_temperature\s*=\s*([^\r\n]+)/i,
         /;\s*first_layer_bed_temperature\s*=\s*([^\r\n]+)/i,
         /M140\s+S([3-9]\d+)/i
+      ],
+      wallLoops: [
+        /;\s*wall_loops\s*=\s*([\d]+)/i,
+        /;\s*perimeters\s*=\s*([\d]+)/i,
+        /;\s*wall_thickness\s*=\s*([\d.]+)/i
+      ],
+      topBottomLayers: [
+        /;\s*top_solid_layers\s*=\s*([\d]+)/i,
+        /;\s*bottom_solid_layers\s*=\s*([\d]+)/i,
+        /;\s*top_layers\s*=\s*([\d]+)/i,
+        /;\s*bottom_layers\s*=\s*([\d]+)/i
+      ],
+      infillPattern: [
+        /;\s*sparse_infill_pattern\s*=\s*([^\r\n]+)/i,
+        /;\s*fill_pattern\s*=\s*([^\r\n]+)/i,
+        /;\s*infill_pattern\s*=\s*([^\r\n]+)/i
+      ],
+      filamentCost: [
+        /;\s*filament_cost\s*=\s*([^\r\n]+)/i,
+        /;\s*cost\s*=\s*([\d.]+)/i
+      ],
+      maxVolumetricSpeed: [
+        /;\s*filament_max_volumetric_speed\s*=\s*([^\r\n]+)/i
       ]
     };
 
@@ -104,7 +127,7 @@ function parseGcodeMetadata(filePath) {
           let val = match[1].trim();
           
           // Use dominant value for almost everything that can be multi-value
-          if (['filamentType', 'tempNozzle', 'tempBed', 'layerHeight', 'infill'].includes(key)) {
+          if (['filamentType', 'tempNozzle', 'tempBed', 'layerHeight', 'infill', 'infillPattern', 'maxVolumetricSpeed', 'filamentCost'].includes(key)) {
             val = getDominantValue(val);
           }
           

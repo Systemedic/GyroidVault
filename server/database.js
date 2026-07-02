@@ -174,6 +174,7 @@ async function initDatabase() {
       category_id INTEGER,
       thumbnail TEXT,
       library_path TEXT UNIQUE, -- Path to the model directory
+      custom_meta TEXT DEFAULT '{}',
       user_id INTEGER,
       created_at DATETIME DEFAULT (datetime('now')),
       updated_at DATETIME DEFAULT (datetime('now')),
@@ -283,6 +284,9 @@ async function initDatabase() {
     if (!mCols2.some(c => c.name === 'library_path')) {
       db.run('ALTER TABLE models ADD COLUMN library_path TEXT');
       db.run('CREATE UNIQUE INDEX IF NOT EXISTS idx_models_library_path ON models(library_path)');
+    }
+    if (!mCols2.some(c => c.name === 'custom_meta')) {
+      db.run('ALTER TABLE models ADD COLUMN custom_meta TEXT DEFAULT "{}"');
     }
   } catch (e) { console.error('Migration failed:', e); }
 

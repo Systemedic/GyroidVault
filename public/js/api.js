@@ -42,6 +42,9 @@ const API = {
   updateProfile(data) {
     return this.request('/api/auth/profile', { method: 'PUT', body: JSON.stringify(data) });
   },
+  generateApiKey() {
+    return this.request('/api/auth/api-key', { method: 'POST' });
+  },
   forgotPassword(email) {
     return this.request('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) });
   },
@@ -85,6 +88,9 @@ const API = {
   createModel(data) {
     return this.request('/api/models', { method: 'POST', body: JSON.stringify(data) });
   },
+  importModelUrl(url) {
+    return this.request('/api/models/import', { method: 'POST', body: JSON.stringify({ url }) });
+  },
   updateModel(id, data) {
     return this.request(`/api/models/${id}`, { method: 'PUT', body: JSON.stringify(data) });
   },
@@ -127,6 +133,10 @@ const API = {
   },
   deleteFile(id, deleteDisk = false) { 
     return this.request(`/api/files/${id}?deleteDisk=${deleteDisk}`, { method: 'DELETE' }); 
+  },
+
+  sendToPrinter(id, printerId) {
+    return this.request(`/api/files/${id}/send-to-printer`, { method: 'POST', body: JSON.stringify({ printer_id: printerId }) });
   },
 
   // Prints

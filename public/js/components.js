@@ -420,32 +420,107 @@ const UI = {
       </div>`;
     }
 
+    const gcodeFiles = (model.files || []).filter(f => f.file_type === 'gcode');
+    let gcodeHtml = '';
+    if (gcodeFiles.length > 0) {
+      gcodeHtml = `
+        <div class="glass-panel" style="margin-bottom:16px; border: 1px solid var(--accent-cyan); box-shadow: 0 0 10px rgba(0, 212, 255, 0.1);">
+          <div class="panel-header">
+            <div class="panel-title" style="color:var(--accent-cyan)">🖨️ G-Code Profiles</div>
+          </div>
+          <div class="panel-body no-pad">
+            ${gcodeFiles.map(f => {
+              const meta = typeof f.metadata === 'string' ? JSON.parse(f.metadata) : f.metadata || {};
+              return `
+              <div style="padding:16px; border-bottom:1px solid var(--border)">
+                <div style="font-weight:600; margin-bottom:10px; word-break:break-all; font-size: 0.9rem;">${f.original_name || f.filename}</div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-size:0.85rem;">
+                  <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                    <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Est. Time</div>
+                    <div style="font-weight:600">${meta.printTime || 'Unknown'}</div>
+                  </div>
+                  <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                    <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Weight</div>
+                    <div style="font-weight:600">${meta.weight ? meta.weight + 'g' : (meta.filamentUsed ? meta.filamentUsed : 'Unknown')}</div>
+                  </div>
+                  <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                    <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Material</div>
+                    <div style="font-weight:600">${meta.filamentType || 'Unknown'}</div>
+                  </div>
+                  <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                    <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Layer Height</div>
+                    <div style="font-weight:600">${meta.layerHeight ? meta.layerHeight + 'mm' : 'Unknown'}</div>
+                  </div>
+                  
+                  ${(meta.infill || meta.infillPattern || meta.tempNozzle || meta.tempBed || meta.supports !== undefined || meta.slicer || meta.printerModel || meta.wallLoops || meta.topBottomLayers || meta.filamentCost || meta.maxVolumetricSpeed) ? `
+                  <div id="gcode-extra-${f.id}" style="display:none; grid-column: span 2; margin-top:4px;">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; font-size:0.85rem;">
+                      ${meta.infill || meta.infillPattern ? `
+                      <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                        <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Infill</div>
+                        <div style="font-weight:600">${meta.infill ? meta.infill + (!String(meta.infill).endsWith('%') ? '%' : '') : ''} ${meta.infillPattern ? '(' + meta.infillPattern + ')' : ''}</div>
+                      </div>` : ''}
+                      ${meta.wallLoops || meta.topBottomLayers ? `
+                      <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                        <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Walls & Layers</div>
+                        <div style="font-weight:600">${meta.wallLoops ? meta.wallLoops + ' Walls' : ''} ${meta.topBottomLayers ? (meta.wallLoops ? ' / ' : '') + meta.topBottomLayers + ' Top/Bot' : ''}</div>
+                      </div>` : ''}
+                      ${meta.tempNozzle ? `
+                      <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                        <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Nozzle Temp</div>
+                        <div style="font-weight:600">${meta.tempNozzle}</div>
+                      </div>` : ''}
+                      ${meta.tempBed ? `
+                      <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                        <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Bed Temp</div>
+                        <div style="font-weight:600">${meta.tempBed}</div>
+                      </div>` : ''}
+                      ${meta.supports !== undefined ? `
+                      <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                        <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Supports</div>
+                        <div style="font-weight:600">${meta.supports === '1' || meta.supports === 1 || meta.supports === 'true' ? 'Yes' : 'No'}</div>
+                      </div>` : ''}
+                      ${meta.maxVolumetricSpeed ? `
+                      <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                        <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Max Vol. Speed</div>
+                        <div style="font-weight:600">${meta.maxVolumetricSpeed} mm³/s</div>
+                      </div>` : ''}
+                      ${meta.filamentCost ? `
+                      <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                        <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Print Cost</div>
+                        <div style="font-weight:600">${meta.filamentCost}</div>
+                      </div>` : ''}
+                      ${meta.slicer ? `
+                      <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                        <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Slicer</div>
+                        <div style="font-weight:600">${meta.slicer}</div>
+                      </div>` : ''}
+                      ${meta.printerModel ? `
+                      <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
+                        <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Printer</div>
+                        <div style="font-weight:600">${meta.printerModel}</div>
+                      </div>` : ''}
+                    </div>
+                  </div>
+                  <div style="grid-column: span 2; text-align:center; margin-top:4px;">
+                    <button class="btn btn-ghost btn-xs" style="color:var(--text-muted)" onclick="const el = document.getElementById('gcode-extra-${f.id}'); const isHidden = el.style.display === 'none'; el.style.display = isHidden ? 'block' : 'none'; this.innerText = isHidden ? 'Hide Details' : 'Show More Details';">Show More Details</button>
+                  </div>
+                  ` : ''}
+                </div>
+                <div style="margin-top:12px; display:flex; gap:8px">
+                  <button class="btn btn-primary btn-sm" style="flex:1" onclick="App.sendToPrinter(${f.id})">Send to Printer</button>
+                  <a href="/api/files/${f.id}/download/${encodeURIComponent(f.filename)}" class="btn btn-secondary btn-sm" download>Download</a>
+                </div>
+              </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     const filesHtml = (model.files || []).filter(f => f.file_type !== 'document').map(f => {
       let metaHtml = '';
-      if (f.metadata) {
-        try {
-          const meta = typeof f.metadata === 'string' ? JSON.parse(f.metadata) : f.metadata;
-          const items = [];
-          if (meta.layerHeight) items.push(`<span><b>LH:</b> ${meta.layerHeight}mm</span>`);
-          if (meta.infill) items.push(`<span><b>Infill:</b> ${meta.infill}%</span>`);
-          if (meta.printTime) items.push(`<span><b>Time:</b> ${meta.printTime}</span>`);
-          if (meta.tempNozzle && meta.tempBed) items.push(`<span><b>Temp:</b> ${meta.tempNozzle}°C/${meta.tempBed}°C</span>`);
-          else if (meta.tempNozzle) items.push(`<span><b>Temp:</b> ${meta.tempNozzle}°C</span>`);
-          if (meta.filamentType) items.push(`<span><b>Mat:</b> ${meta.filamentType}</span>`);
-          
-          // Improved filament usage display
-          if (meta.weight) items.push(`<span><b>Used:</b> ${meta.weight}g</span>`);
-          else if (meta.filamentUsed) {
-            const val = meta.filamentUsed;
-            const unit = val.endsWith('m') ? '' : 'm';
-            items.push(`<span><b>Used:</b> ${val}${unit}</span>`);
-          }
-
-          if (meta.supports === '1') items.push(`<span><b>Supports:</b> Yes</span>`);
-          if (meta.printerModel) items.push(`<span><b>Printer:</b> ${meta.printerModel}</span>`);
-          if (items.length) metaHtml = `<div class="file-gcode-meta" style="display:flex;flex-wrap:wrap;gap:12px;font-size:0.75rem;color:var(--text-secondary);margin-top:6px;background:rgba(255,255,255,0.03);padding:4px 8px;border-radius:4px;border:1px solid var(--border)">${items.join('')}</div>`;
-        } catch(e) {}
-      }
 
       return `
       <div class="file-item">
@@ -586,6 +661,7 @@ const UI = {
         </div>
 
         <div>
+          ${gcodeHtml}
           <div class="glass-panel">
             <div class="panel-header">
               <div class="panel-title">🖨 Print History</div>
@@ -838,6 +914,14 @@ const UI = {
           <option value="48">48 per page</option>
           <option value="96">96 per page</option>
         </select>
+        <div style="display:flex;gap:4px;margin-left:auto;border-left:1px solid var(--border);padding-left:12px">
+          <button class="btn btn-ghost btn-sm" id="view-mode-grid" onclick="App.setViewMode('grid')" title="Grid View" style="padding:8px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          </button>
+          <button class="btn btn-ghost btn-sm" id="view-mode-list" onclick="App.setViewMode('list')" title="List View" style="padding:8px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
+          </button>
+        </div>
         <button class="btn btn-secondary btn-sm" onclick="App.selectAll()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
           Select All
@@ -1041,6 +1125,57 @@ const UI = {
         </div>
         <div style="display:flex;justify-content:flex-end;margin-top:20px">
           <button type="submit" class="btn btn-primary">Reset Password</button>
+        </div>
+      </form>`;
+  },
+
+  printersSettingsForm(printers = []) {
+    const list = printers.map(p => `
+      <div class="settings-item">
+        <div style="flex:1">
+          <div style="font-weight:500">${p.name}</div>
+          <div style="font-size:0.8rem;color:var(--text-muted)">${p.url} ${p.api_key ? '🔑' : ''}</div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="App.deletePrinter('${p.id}')">Delete</button>
+      </div>
+    `).join('');
+    
+    return `
+      ${list || '<div style="color:var(--text-muted);font-size:.875rem;padding:8px 0">No printers configured</div>'}
+      <form onsubmit="App.handleAddPrinter(event)" class="form-grid" style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border)">
+        <h4>Add Moonraker / Klipper Printer</h4>
+        <div class="form-group">
+          <label>Printer Name</label>
+          <input type="text" name="name" required class="form-input" placeholder="e.g. Voron 2.4">
+        </div>
+        <div class="form-group">
+          <label>Printer URL</label>
+          <input type="url" name="url" required class="form-input" placeholder="e.g. http://192.168.1.100">
+        </div>
+        <div class="form-group">
+          <label>API Key (Optional)</label>
+          <input type="password" name="api_key" class="form-input" placeholder="If required by Moonraker">
+        </div>
+        <div>
+          <button type="submit" class="btn btn-primary">Add Printer</button>
+        </div>
+      </form>
+    `;
+  },
+
+  sendToPrinterForm(fileId, printers = []) {
+    const options = printers.map(p => `<option value="${p.id}">${p.name} (${p.url})</option>`).join('');
+    return `
+      <form onsubmit="App.handleSendToPrinter(event, ${fileId})">
+        <div class="form-group">
+          <label class="form-label">Select Printer</label>
+          <select class="form-select" name="printer_id">
+            ${options}
+          </select>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-primary">Send to Printer</button>
         </div>
       </form>`;
   },

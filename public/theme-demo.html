@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GyroidVault Theme Concepts</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Roboto+Mono:wght@500&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 40px;
+      font-family: 'Inter', sans-serif;
+      background: #0f0f11;
+      color: #fff;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+      gap: 40px;
+    }
+
+    .theme-container {
+      padding: 30px;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .theme-title {
+      font-size: 1.2rem;
+      font-weight: 800;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #fff;
+    }
+
+    /* Common Card Layout */
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      width: 100%;
+      max-width: 350px;
+    }
+    .card-img {
+      width: 100%;
+      height: 200px;
+      background: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #666;
+    }
+    .card-content {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card-title { font-weight: 600; font-size: 1.1rem; }
+    .card-tags { display: flex; gap: 8px; }
+    .tag { font-size: 0.75rem; padding: 4px 8px; }
+    .card-actions { display: flex; gap: 10px; margin-top: 10px; }
+    .btn { cursor: pointer; padding: 8px 16px; font-weight: 600; text-align: center; border: none; }
+
+
+    /* =========================================
+       0. CURRENT THEME (Glassmorphism)
+       ========================================= */
+    .theme-glass {
+      background: #000000;
+    }
+    .theme-glass .card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .theme-glass .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    .theme-glass .card-img {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+    }
+    .theme-glass .tag {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .theme-glass .btn-primary {
+      background: linear-gradient(135deg, #00f2fe, #4facfe);
+      color: #000;
+      border-radius: 8px;
+      box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
+    }
+    .theme-glass .btn-primary:hover {
+      box-shadow: 0 6px 20px rgba(79, 172, 254, 0.6);
+      transform: scale(1.02);
+    }
+    .theme-glass .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: #fff;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    .theme-glass .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    /* =========================================
+       1. VERCEL / ULTRA-CLEAN (Minimalist)
+       ========================================= */
+    .theme-minimal {
+      background: #000000;
+      border: 1px solid #333;
+    }
+    .theme-minimal .card {
+      background: #0a0a0a;
+      border: 1px solid #222;
+      border-radius: 6px;
+      padding: 16px;
+      transition: border-color 0.2s ease;
+    }
+    .theme-minimal .card:hover {
+      border-color: #555;
+    }
+    .theme-minimal .card-img {
+      background: linear-gradient(45deg, #111, #222);
+      border-radius: 4px;
+    }
+    .theme-minimal .tag {
+      background: #111;
+      border: 1px solid #333;
+      border-radius: 99px;
+      color: #aaa;
+    }
+    .theme-minimal .btn-primary {
+      background: #fff;
+      color: #000;
+      border-radius: 6px;
+    }
+    .theme-minimal .btn-primary:hover {
+      background: #eee;
+    }
+    .theme-minimal .btn-secondary {
+      background: transparent;
+      color: #fff;
+      border: 1px solid #333;
+      border-radius: 6px;
+    }
+    .theme-minimal .btn-secondary:hover {
+      background: #111;
+    }
+
+
+    /* =========================================
+       2. NEO-BRUTALISM (Bold & Indie)
+       ========================================= */
+    .theme-brutal {
+      background: #000000;
+      color: #fff;
+    }
+    .theme-brutal .theme-title { color: #fff; }
+    .theme-brutal .card {
+      background: #fff;
+      border: 3px solid #111;
+      border-radius: 0px;
+      padding: 16px;
+      box-shadow: 6px 6px 0px #111;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+    .theme-brutal .card:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 8px 8px 0px #111;
+    }
+    .theme-brutal .card-img {
+      background: #ff6b6b;
+      border: 3px solid #111;
+    }
+    .theme-brutal .tag {
+      background: #4ecdc4;
+      border: 2px solid #111;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .theme-brutal .btn-primary {
+      background: #ffe66d;
+      color: #111;
+      border: 3px solid #111;
+      box-shadow: 3px 3px 0px #111;
+    }
+    .theme-brutal .btn-primary:active {
+      transform: translate(3px, 3px);
+      box-shadow: 0px 0px 0px #111;
+    }
+    .theme-brutal .btn-secondary {
+      background: #fff;
+      color: #111;
+      border: 3px solid #111;
+      box-shadow: 3px 3px 0px #111;
+    }
+
+
+    /* =========================================
+       3. INDUSTRIAL / CAD (Hardware focus)
+       ========================================= */
+    .theme-industrial {
+      background: #000000;
+      font-family: 'Roboto Mono', monospace;
+    }
+    .theme-industrial .card {
+      background: #23272e;
+      border-left: 4px solid #ff8c00; /* technical orange accent */
+      padding: 16px;
+    }
+    .theme-industrial .card-img {
+      background: repeating-linear-gradient(
+        45deg,
+        #1b1e23,
+        #1b1e23 10px,
+        #23272e 10px,
+        #23272e 20px
+      );
+      border: 1px solid #333;
+    }
+    .theme-industrial .tag {
+      background: #1b1e23;
+      color: #ff8c00;
+      border: 1px dashed #555;
+      text-transform: uppercase;
+    }
+    .theme-industrial .btn {
+      font-family: 'Roboto Mono', monospace;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      letter-spacing: 1px;
+    }
+    .theme-industrial .btn-primary {
+      background: #ff8c00;
+      color: #000;
+    }
+    .theme-industrial .btn-primary:hover {
+      background: #ffa733;
+    }
+    .theme-industrial .btn-secondary {
+      background: #2c313a;
+      color: #abb2bf;
+    }
+
+
+    /* =========================================
+       4. CLASSIC MATERIAL (Solid Dark Mode)
+       ========================================= */
+    .theme-material {
+      background: #000000;
+    }
+    .theme-material .card {
+      background: #1e1e1e;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      transition: box-shadow 0.2s, transform 0.2s;
+    }
+    .theme-material .card:hover {
+      box-shadow: 0 8px 12px rgba(0,0,0,0.5);
+      transform: translateY(-2px);
+    }
+    .theme-material .card-img {
+      background: #2c2c2c;
+      border-radius: 8px;
+    }
+    .theme-material .tag {
+      background: #2c2c2c;
+      border-radius: 4px;
+      color: #bbb;
+    }
+    .theme-material .btn-primary {
+      background: #bb86fc; /* Material dark mode purple */
+      color: #000;
+      border-radius: 4px;
+      text-transform: uppercase;
+      font-weight: 600;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+    }
+    .theme-material .btn-primary:hover {
+      background: #cba0fc;
+    }
+    .theme-material .btn-secondary {
+      background: transparent;
+      color: #bb86fc;
+      border-radius: 4px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .theme-material .btn-secondary:hover {
+      background: rgba(187, 134, 252, 0.1);
+    }
+
+  </style>
+</head>
+<body>
+
+  <!-- THEME 0 (CURRENT) -->
+  <div class="theme-container theme-glass">
+    <div class="theme-title">0. Current (Glassmorphism)</div>
+    <div class="card">
+      <div class="card-img">[ 3D Render ]</div>
+      <div class="card-content">
+        <div class="card-title">Soldering Clamp V2</div>
+        <div class="card-tags">
+          <span class="tag">PETG</span>
+          <span class="tag">Workshop</span>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary">Download</button>
+          <button class="btn btn-secondary">Edit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THEME 1 -->
+  <div class="theme-container theme-minimal">
+    <div class="theme-title">1. Ultra-Clean (Apple/Vercel)</div>
+    <div class="card">
+      <div class="card-img">[ 3D Render ]</div>
+      <div class="card-content">
+        <div class="card-title">Soldering Clamp V2</div>
+        <div class="card-tags">
+          <span class="tag">PETG</span>
+          <span class="tag">Workshop</span>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary">Download</button>
+          <button class="btn btn-secondary">Edit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THEME 2 -->
+  <div class="theme-container theme-brutal">
+    <div class="theme-title">2. Neo-Brutalism (Retro Indie)</div>
+    <div class="card">
+      <div class="card-img">[ 3D Render ]</div>
+      <div class="card-content">
+        <div class="card-title">Soldering Clamp V2</div>
+        <div class="card-tags">
+          <span class="tag">PETG</span>
+          <span class="tag">Workshop</span>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary">Download</button>
+          <button class="btn btn-secondary">Edit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THEME 3 -->
+  <div class="theme-container theme-industrial">
+    <div class="theme-title">3. Industrial / CAD</div>
+    <div class="card">
+      <div class="card-img">[ 3D Render ]</div>
+      <div class="card-content">
+        <div class="card-title">Soldering Clamp V2</div>
+        <div class="card-tags">
+          <span class="tag">PETG</span>
+          <span class="tag">Workshop</span>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary">DOWNLOAD</button>
+          <button class="btn btn-secondary">EDIT</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- THEME 4 -->
+  <div class="theme-container theme-material">
+    <div class="theme-title">4. Classic Material (Flat Dark)</div>
+    <div class="card">
+      <div class="card-img">[ 3D Render ]</div>
+      <div class="card-content">
+        <div class="card-title">Soldering Clamp V2</div>
+        <div class="card-tags">
+          <span class="tag">PETG</span>
+          <span class="tag">Workshop</span>
+        </div>
+        <div class="card-actions">
+          <button class="btn btn-primary">Download</button>
+          <button class="btn btn-secondary">Edit</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
