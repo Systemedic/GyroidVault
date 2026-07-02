@@ -21,11 +21,14 @@
 
 ## Features
 
-- **Dark/Light Mode**: Toggle between dark and light themes depending on your preference.
+- **Dark/Light Mode & Themes**: Toggle between dark and light themes, and choose from multiple application themes (e.g., Glass) depending on your preference.
 - **Batch Actions**: Use `Ctrl+Click` (or `Shift+Click`) to select multiple models in the grid to bulk tag, delete, or add to collections at once.
 - **Folder Watching**: Automatically scan your local directories to import models, or upload them manually.
 - **Folder View Collages**: Browse your local directories directly. Folders automatically generate dynamic 2x2 image collages based on the 3D files inside them.
 - **Built-in 3D Viewer**: Preview STL and 3MF files directly in your browser.
+- **Extended G-Code Analysis**: Extract deep metadata from your G-Code files including infill, layers, temperatures, volumetric speed, print cost, and the slicer/printer used.
+- **Moonraker / Klipper Integration**: Configure your printers and seamlessly send G-Code files directly to your printer with one click.
+- **Custom Meta Boxes**: Add and manage custom metadata fields for your models for ultimate flexibility.
 - **Collections**: Group related files together for multi-part projects.
 - **Model Versioning**: Track design iterations (v1, v2, final) under a single model entry.
 - **Print Log**: Keep a history of your prints, filament types used, and success rates.
