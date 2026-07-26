@@ -9,9 +9,11 @@ const UI = {
   },
 
   formatSize(bytes) {
-    if (!bytes) return '0 B';
-    const u = ['B','KB','MB','GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    if (!bytes || isNaN(bytes)) return '0 B';
+    const u = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    let i = Math.floor(Math.log(bytes) / Math.log(1024));
+    if (i < 0) i = 0;
+    if (i >= u.length) i = u.length - 1;
     return (bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + u[i];
   },
 

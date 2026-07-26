@@ -559,9 +559,11 @@ function deleteModelInternal(id, deleteDisk = false) {
 
 app.delete('/api/models/:id', authenticate, (req, res) => {
   try {
+    if (!req.user || req.user.role === 'viewer') return res.status(403).json({ error: 'Viewer accounts cannot delete data' });
     const id = Number(req.params.id);
     const model = get('SELECT user_id FROM models WHERE id=?', [id]);
-    if (model && req.user.role !== 'admin' && model.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+    if (!model) return res.status(404).json({ error: 'Model not found' });
+    if (req.user.role !== 'admin' && model.user_id && model.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     const deleteDisk = req.query.deleteDisk === 'true';
     const success = deleteModelInternal(id, deleteDisk);
     if (!success) return res.status(404).json({ error: 'Model not found' });
@@ -571,12 +573,18 @@ app.delete('/api/models/:id', authenticate, (req, res) => {
 
 app.post('/api/models/bulk-delete', authenticate, (req, res) => {
   try {
+    if (!req.user || req.user.role === 'viewer') return res.status(403).json({ error: 'Viewer accounts cannot delete data' });
     const { ids, deleteDisk } = req.body;
     if (!Array.isArray(ids)) return res.status(400).json({ error: 'IDs array required' });
+    let count = 0;
     for (const id of ids) {
-      deleteModelInternal(Number(id), !!deleteDisk);
+      const numId = Number(id);
+      const model = get('SELECT user_id FROM models WHERE id=?', [numId]);
+      if (model && (req.user.role === 'admin' || !model.user_id || model.user_id === req.user.id)) {
+        if (deleteModelInternal(numId, !!deleteDisk)) count++;
+      }
     }
-    res.json({ success: true, count: ids.length });
+    res.json({ success: true, count });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Failed bulk delete' }); }
 });
 
@@ -754,9 +762,10 @@ app.get('/api/files/:id/download/:filename?', (req, res) => {
 
 app.delete('/api/files/:id', authenticate, (req, res) => {
   try {
+    if (!req.user || req.user.role === 'viewer') return res.status(403).json({ error: 'Viewer accounts cannot delete data' });
     const file = get('SELECT f.*, m.user_id as model_owner FROM files f JOIN models m ON f.model_id = m.id WHERE f.id=?', [Number(req.params.id)]);
     if (!file) return res.status(404).json({ error: 'File not found' });
-    if (req.user.role !== 'admin' && file.model_owner !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+    if (req.user.role !== 'admin' && file.model_owner && file.model_owner !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     
     const deleteDisk = req.query.deleteDisk === 'true';
     

@@ -20,7 +20,15 @@ const Viewer = {
     console.log('[Viewer] Create:', { fileUrl, fileType, is3MF, isGcode });
     
     if (isGcode && typeof GCodePreview !== 'undefined') {
-      container.innerHTML = '<canvas style="width:100%;height:100%"></canvas>';
+      container.style.position = 'relative';
+      container.innerHTML = `
+        <canvas style="width:100%;height:100%;display:block;"></canvas>
+        <div class="gcode-controls-bar" style="position:absolute;bottom:12px;left:12px;right:12px;background:rgba(18,18,30,0.85);backdrop-filter:blur(8px);border:1px solid var(--border);border-radius:8px;padding:8px 14px;display:flex;align-items:center;gap:12px;color:var(--text-primary);z-index:10;font-size:0.85rem;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+          <span id="gcode-layer-label" style="font-weight:600;white-space:nowrap;min-width:110px;">Loading G-Code...</span>
+          <input type="range" id="gcode-layer-slider" min="1" max="1" value="1" disabled style="flex:1;cursor:pointer;accent-color:var(--accent-cyan);">
+          <span id="gcode-z-label" style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">Z: -- mm</span>
+        </div>
+      `;
       const canvas = container.querySelector('canvas');
       const preview = GCodePreview.init({
         canvas: canvas,
@@ -34,6 +42,10 @@ const Viewer = {
       const viewer = { preview, isGcode: true, animId: null, renderer: { dispose: () => preview.dispose && preview.dispose() } };
       this.activeViewers.push(viewer);
       
+      const layerLabel = container.querySelector('#gcode-layer-label');
+      const layerSlider = container.querySelector('#gcode-layer-slider');
+      const zLabel = container.querySelector('#gcode-z-label');
+
       // Load G-Code via fetch and process chunks
       fetch(fileUrl)
         .then(response => {
@@ -42,6 +54,40 @@ const Viewer = {
         })
         .then(() => {
           console.log('G-Code loaded');
+          const layers = preview.layers || [];
+          const totalLayers = layers.length || 1;
+          
+          if (totalLayers > 1) {
+            layerSlider.max = totalLayers;
+            layerSlider.value = totalLayers;
+            layerSlider.disabled = false;
+            
+            const updateLayerUI = () => {
+              const val = parseInt(layerSlider.value, 10);
+              preview.endLayer = val;
+              preview.render();
+              
+              const currentLayer = layers[val - 1];
+              let currentZ = 0;
+              if (currentLayer) {
+                if (currentLayer.commands) {
+                  const cmdWithZ = currentLayer.commands.find(c => c.params && c.params.z !== undefined);
+                  if (cmdWithZ) currentZ = cmdWithZ.params.z;
+                }
+                if (currentZ === 0 && currentLayer.height) currentZ = currentLayer.height;
+              }
+              if (!currentZ && preview.parser && preview.parser.curZ) currentZ = preview.parser.curZ;
+
+              layerLabel.innerText = `Layer ${val} / ${totalLayers}`;
+              zLabel.innerText = currentZ ? `Z: ${(Number(currentZ)).toFixed(2)} mm` : '';
+            };
+
+            layerSlider.oninput = updateLayerUI;
+            updateLayerUI();
+          } else {
+            layerLabel.innerText = 'G-Code Preview';
+            zLabel.innerText = '';
+          }
         })
         .catch(err => {
           console.error('GCode load error:', err);

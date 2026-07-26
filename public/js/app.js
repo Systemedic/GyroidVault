@@ -1884,7 +1884,9 @@ const App = {
   },
 
   confirmDeleteModel(id, name) {
-    if (!this.currentUser) return;
+    if (!this.currentUser || this.currentUser.role === 'viewer') {
+      return this.toast('You must be logged in to delete models', 'error');
+    }
     this.openModal('Delete Model', UI.deleteModelForm(id, name));
   },
 
@@ -1961,6 +1963,9 @@ const App = {
   },
 
   confirmDeleteFile(fileId, filename, modelId) {
+    if (!this.currentUser || this.currentUser.role === 'viewer') {
+      return this.toast('You must be logged in to delete files', 'error');
+    }
     this.openModal('Delete File', UI.deleteFileForm(fileId, filename, modelId));
   },
 
