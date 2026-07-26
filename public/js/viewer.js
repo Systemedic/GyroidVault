@@ -74,6 +74,23 @@ const Viewer = {
           const layers = preview.layers || [];
           const totalLayers = layers.length || 1;
           
+          // Auto-center camera on model bounding box
+          if (preview.group && typeof THREE !== 'undefined') {
+            try {
+              const box = new THREE.Box3().setFromObject(preview.group);
+              if (!box.isEmpty()) {
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                if (preview.controls) {
+                  preview.controls.target.copy(center);
+                  const maxDim = Math.max(size.x, size.y, size.z, 30);
+                  preview.camera.position.set(center.x, center.y + maxDim * 0.8, center.z + maxDim * 1.8);
+                  preview.controls.update();
+                }
+              }
+            } catch (e) { console.error('Auto-center camera error:', e); }
+          }
+
           if (totalLayers > 1) {
             layerSlider.max = totalLayers;
             layerSlider.value = totalLayers;
