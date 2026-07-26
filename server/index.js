@@ -1565,7 +1565,8 @@ app.get('/api/settings/system', authenticate, (req, res) => {
 
 // ─── IP UNBLOCK & DUPLICATES SYSTEM ─────────────────────────────────────────
 
-app.get('/api/system/blocked-ips', authenticate, requireAdmin, (req, res) => {
+app.get('/api/system/blocked-ips', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   const now = Date.now();
   const list = [];
   for (const [ip, info] of blockedIPsStore.entries()) {
@@ -1576,14 +1577,16 @@ app.get('/api/system/blocked-ips', authenticate, requireAdmin, (req, res) => {
   res.json(list);
 });
 
-app.post('/api/system/unblock-ip', authenticate, requireAdmin, (req, res) => {
+app.post('/api/system/unblock-ip', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   const { ip } = req.body;
   if (!ip) return res.status(400).json({ error: 'IP address required' });
   blockedIPsStore.delete(ip);
   res.json({ success: true, message: `IP ${ip} unblocked successfully` });
 });
 
-app.get('/api/system/duplicates', authenticate, requireAdmin, (req, res) => {
+app.get('/api/system/duplicates', authenticate, (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ error: 'Forbidden' });
   try {
     const crypto = require('crypto');
     const files = all(`
