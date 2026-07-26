@@ -1200,45 +1200,63 @@ const UI = {
           <input type="number" name="auto_scan_interval" value="${config.auto_scan_interval !== undefined ? config.auto_scan_interval : 24}" min="0" max="168" class="form-input">
           <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Set to 0 to disable background scanning. Default is 24.</p>
         </div>
-        
-        <h3 style="grid-column: 1 / -1; margin-top: 15px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">Security & Access</h3>
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" name="open_registration" value="true" ${config.open_registration === 'true' ? 'checked' : ''}>
-            Enable Open Registration
-          </label>
-          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">If enabled, anyone can register without an invite token.</p>
+
+        <div style="grid-column: 1 / -1; margin-top:20px">
+          <button type="submit" class="btn btn-primary">Save General Settings</button>
         </div>
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="checkbox" name="require_login_to_view" value="true" ${config.require_login_to_view === 'true' ? 'checked' : ''}>
-            Private Instance Mode
+      </form>`;
+  },
+
+  securitySettingsForm(config = {}) {
+    return `
+      <form onsubmit="App.handleSaveSystemSettings(event)" style="display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <label class="toggle-item">
+            <div>
+              <div style="font-weight:600;font-size:0.95rem;color:var(--text-primary)">Enable Open Registration</div>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">Allows anyone to register an account without needing an invite code.</div>
+            </div>
+            <input type="checkbox" name="open_registration" value="true" ${config.open_registration === 'true' ? 'checked' : ''}>
+            <span class="toggle-switch"></span>
           </label>
-          <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">If enabled, guests will be forced to log in before viewing any content.</p>
+
+          <label class="toggle-item">
+            <div>
+              <div style="font-weight:600;font-size:0.95rem;color:var(--text-primary)">Private Instance Mode</div>
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">Forces all guests to log in before viewing any models or library files.</div>
+            </div>
+            <input type="checkbox" name="require_login_to_view" value="true" ${config.require_login_to_view === 'true' ? 'checked' : ''}>
+            <span class="toggle-switch"></span>
+          </label>
         </div>
 
-        <h3 style="grid-column: 1 / -1; margin-top: 20px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">🛡️ IP Auto-Block & Rate Limits</h3>
-        <div style="grid-column: 1 / -1;" id="blocked-ips-container">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+        <div>
+          <button type="submit" class="btn btn-primary">Save Security Settings</button>
+        </div>
+      </form>
+
+      <div style="margin-top:32px; border-top:1px solid var(--border); padding-top:20px">
+        <h3 style="margin-bottom:12px; font-size:1.1rem; color:var(--text-primary); display:flex; align-items:center; gap:8px">🛡️ Blocked IP Addresses</h3>
+        <div id="blocked-ips-container">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
             <button type="button" class="btn btn-secondary btn-sm" onclick="App.loadBlockedIps()">Refresh Blocked IPs</button>
             <span style="font-size:0.75rem;color:var(--text-muted)">Unblock IP addresses flagged for failed login attempts.</span>
           </div>
-          <div id="blocked-ips-list" style="margin-top:8px"></div>
+          <div id="blocked-ips-list"></div>
         </div>
+      </div>`;
+  },
 
-        <h3 style="grid-column: 1 / -1; margin-top: 20px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">🔍 Duplicate File Finder</h3>
-        <div style="grid-column: 1 / -1;" id="duplicates-scanner-container">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="App.scanForDuplicates()">Scan for Duplicate Files</button>
-            <span style="font-size:0.75rem;color:var(--text-muted)">Scans library using SHA-256 hashes to find identical 3D models.</span>
-          </div>
-          <div id="duplicates-results" style="margin-top:8px"></div>
+  maintenanceSettingsForm() {
+    return `
+      <div style="display:flex;flex-direction:column;gap:24px">
+        <div>
+          <h3 style="margin-bottom:8px; font-size:1.1rem; color:var(--text-primary); display:flex; align-items:center; gap:8px">🔍 Duplicate File Finder</h3>
+          <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:16px">Scans your library using SHA-256 file hashes to find identical 3D model files across different folders or models.</p>
+          <button type="button" class="btn btn-primary btn-sm" onclick="App.scanForDuplicates()">Scan for Duplicate Files</button>
+          <div id="duplicates-results" style="margin-top:16px"></div>
         </div>
-
-        <div style="grid-column: 1 / -1; margin-top:20px">
-          <button type="submit" class="btn btn-primary">Save System Settings</button>
-        </div>
-      </form>`;
+      </div>`;
   },
 
   smtpSettingsForm(config = {}) {

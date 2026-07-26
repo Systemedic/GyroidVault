@@ -1587,6 +1587,8 @@ const App = {
         <button class="tab-btn" data-tab="tags" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Tags</button>
         <button class="tab-btn" data-tab="materials" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Materials</button>
         ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="printers" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Printers</button>' : ''}
+        ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="security" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Security</button>' : ''}
+        ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="maintenance" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Maintenance</button>' : ''}
         ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="system" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">System</button>' : ''}
         ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="smtp" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">SMTP & Mail</button>' : ''}
         ${this.currentUser?.role === 'admin' ? '<button class="tab-btn" data-tab="users" style="background:none;border:none;color:var(--text-secondary);padding:10px 20px;cursor:pointer;font-weight:600;border-bottom:2px solid transparent;transition:all .2s">Users</button>' : ''}
@@ -1624,20 +1626,20 @@ const App = {
               <div class="panel-header"><div class="panel-title">🖨️ 3D Printers (Moonraker)</div></div>
               <div class="panel-body">${UI.printersSettingsForm(printers)}</div>
             </div>`;
-        } else if (tab === 'smtp') {
-          const config = await API.getSMTPSettings();
+        } else if (tab === 'security') {
+          const config = await API.getSystemSettings();
           content.innerHTML = `
             <div class="glass-panel">
-              <div class="panel-header"><div class="panel-title">SMTP Mail Configuration</div></div>
-              <div class="panel-body">${UI.smtpSettingsForm(config)}</div>
+              <div class="panel-header"><div class="panel-title">🛡️ Security & Access Control</div></div>
+              <div class="panel-body">${UI.securitySettingsForm(config)}</div>
             </div>`;
-        } else if (tab === 'system') {
-          const config = await API.getSystemSettings();
+          setTimeout(() => App.loadBlockedIps(), 50);
+        } else if (tab === 'maintenance') {
           const logs = await API.getSystemLogs();
           content.innerHTML = `
             <div class="glass-panel" style="margin-bottom:24px">
-              <div class="panel-header"><div class="panel-title">System Settings</div></div>
-              <div class="panel-body">${UI.systemSettingsForm(config)}</div>
+              <div class="panel-header"><div class="panel-title">🔍 Maintenance & Duplicates</div></div>
+              <div class="panel-body">${UI.maintenanceSettingsForm()}</div>
             </div>
             <div class="glass-panel">
               <div class="panel-header">
@@ -1655,6 +1657,20 @@ const App = {
                   `).join('') : '<div style="padding:20px;text-align:center;color:var(--text-muted)">No logs available</div>'}
                 </div>
               </div>
+            </div>`;
+        } else if (tab === 'smtp') {
+          const config = await API.getSMTPSettings();
+          content.innerHTML = `
+            <div class="glass-panel">
+              <div class="panel-header"><div class="panel-title">SMTP Mail Configuration</div></div>
+              <div class="panel-body">${UI.smtpSettingsForm(config)}</div>
+            </div>`;
+        } else if (tab === 'system') {
+          const config = await API.getSystemSettings();
+          content.innerHTML = `
+            <div class="glass-panel" style="margin-bottom:24px">
+              <div class="panel-header"><div class="panel-title">System Settings</div></div>
+              <div class="panel-body">${UI.systemSettingsForm(config)}</div>
             </div>`;
         } else if (tab === 'users') {
           const users = await API.getUsers();
