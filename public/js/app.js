@@ -2102,6 +2102,77 @@ const App = {
     // Trigger the switch logic already defined in renderSettings
     const activeTab = Array.from(tabs).find(t => t.dataset.tab === tab);
     if (activeTab) activeTab.click();
+  },
+
+  async loadBlockedIps() {
+    const el = document.getElementById('blocked-ips-list');
+    if (!el) return;
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem">Loading blocked IPs...</div>';
+    try {
+      const ips = await API.getBlockedIps();
+      if (!ips || ips.length === 0) {
+        el.innerHTML = '<div style="color:var(--text-muted);font-size:.85rem;padding:8px 0">No IP addresses are currently blocked.</div>';
+        return;
+      }
+      el.innerHTML = `
+        <table class="table" style="width:100%;font-size:.85rem">
+          <thead><tr><th>IP Address</th><th>Failed Attempts</th><th>Blocked At</th><th>Action</th></tr></thead>
+          <tbody>
+            ${ips.map(item => `
+              <tr>
+                <td><strong>${item.ip}</strong></td>
+                <td>${item.attempts}</td>
+                <td>${UI.formatDate(item.blockedAt)}</td>
+                <td><button type="button" class="btn btn-danger btn-xs" onclick="App.unblockIp('${item.ip}')">Unblock</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    } catch (e) {
+      el.innerHTML = `<div style="color:var(--error);font-size:.85rem">${e.message || 'Failed to fetch blocked IPs'}</div>`;
+    }
+  },
+
+  async unblockIp(ip) {
+    try {
+      await API.unblockIp(ip);
+      this.toast(`Unblocked IP ${ip}`);
+      this.loadBlockedIps();
+    } catch (e) {
+      this.toast(e.message, 'error');
+    }
+  },
+
+  async scanForDuplicates() {
+    const el = document.getElementById('duplicates-results');
+    if (!el) return;
+    el.innerHTML = '<div style="color:var(--accent-cyan);font-size:.85rem">⏳ Scanning library using SHA-256 hashes... Please wait.</div>';
+    try {
+      const res = await API.scanDuplicates();
+      if (!res.groups || res.groups.length === 0) {
+        el.innerHTML = '<div style="color:var(--accent-green);font-size:.85rem;padding:8px 0">✓ Great news! No duplicate 3D model files found in your library.</div>';
+        return;
+      }
+      el.innerHTML = `
+        <div style="margin-bottom:10px;font-weight:600;color:var(--error)">Found ${res.duplicatesCount} group(s) of identical files:</div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          ${res.groups.map(group => `
+            <div style="background:var(--bg-input);padding:12px;border-radius:6px;border:1px solid var(--border)">
+              <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:6px">SHA256: <code>${group.hash.substring(0, 16)}...</code> (${UI.formatSize(group.size)})</div>
+              <div style="display:flex;flex-direction:column;gap:4px">
+                ${group.files.map(f => `
+                  <div style="display:flex;justify-content:space-between;align-items:center;font-size:0.85rem">
+                    <span>📄 <strong>${f.original_name}</strong> in model <a href="#/models/${f.model_id}" style="color:var(--accent-cyan)">${f.model_name || 'Model #'+f.model_id}</a></span>
+                    <a href="#/models/${f.model_id}" class="btn btn-ghost btn-xs">View Model</a>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>`;
+    } catch (e) {
+      el.innerHTML = `<div style="color:var(--error);font-size:.85rem">${e.message || 'Failed to scan duplicates'}</div>`;
+    }
   }
 };
 
@@ -2110,9 +2181,14 @@ document.getElementById('modal-overlay')?.addEventListener('click', (e) => {
   if (e.target === e.currentTarget) App.closeModal();
 });
 
-// ── Close modal on Escape ──
+// ── Close modal on Escape & Ctrl+K search shortcut ──
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') App.closeModal();
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    const searchInput = document.getElementById('search-input');
+    if (searchInput) searchInput.focus();
+  }
 });
 
 // ── Initialize ──

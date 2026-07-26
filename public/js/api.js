@@ -177,5 +177,8 @@ const API = {
   getUpdateStatus() { return this.request('/api/system/updates'); },
   getSystemLogs() { return this.request('/api/system/logs'); },
   clearSystemLogs() { return this.request('/api/system/logs', { method: 'DELETE' }); },
-  getPublicConfig() { return this.request('/api/system/public-config'); }
+  getPublicConfig() { return this.request('/api/system/public-config'); },
+  getBlockedIps() { return this.request('/api/system/blocked-ips'); },
+  unblockIp(ip) { return this.request('/api/system/unblock-ip', { method: 'POST', body: JSON.stringify({ ip }) }); },
+  scanDuplicates() { return this.request('/api/system/duplicates'); }
 };

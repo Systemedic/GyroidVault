@@ -12,7 +12,7 @@ const Viewer = {
     this.activeViewers = [];
   },
 
-  create(containerId, fileUrl, fileType = null) {
+  create(containerId, fileUrl, fileType = null, meta = {}) {
     const container = document.getElementById(containerId);
     if (!container || typeof THREE === 'undefined') return;
     const is3MF = fileType === '3mf' || (!fileType && fileUrl.toLowerCase().includes('.3mf'));
@@ -29,12 +29,29 @@ const Viewer = {
           <span id="gcode-z-label" style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">Z: -- mm</span>
         </div>
       `;
+
+      // Determine dynamic build volume grid based on printer model or metadata
+      let buildVol = { x: 250, y: 250, z: 250 };
+      if (meta && meta.printerModel) {
+        const pm = String(meta.printerModel).toLowerCase();
+        if (pm.includes('bambu') || pm.includes('x1') || pm.includes('p1') || pm.includes('a1')) buildVol = { x: 256, y: 256, z: 256 };
+        else if (pm.includes('prusa mk') || pm.includes('mk3') || pm.includes('mk4')) buildVol = { x: 250, y: 210, z: 220 };
+        else if (pm.includes('ender') || pm.includes('v2')) buildVol = { x: 220, y: 220, z: 250 };
+        else if (pm.includes('voron')) buildVol = { x: 300, y: 300, z: 300 };
+      }
+
+      // Determine top layer highlight color based on filament color if provided
+      let layerColor = 0x00d4ff;
+      if (meta && meta.filamentColor && /^#[0-9A-F]{6}$/i.test(meta.filamentColor)) {
+        layerColor = new THREE.Color(meta.filamentColor).getHex();
+      }
+
       const canvas = container.querySelector('canvas');
       const preview = GCodePreview.init({
         canvas: canvas,
-        topLayerColor: new THREE.Color(0x00d4ff).getHex(),
+        topLayerColor: layerColor,
         lastSegmentColor: new THREE.Color(0xffffff).getHex(),
-        buildVolume: {x: 250, y: 250, z: 250},
+        buildVolume: buildVol,
         initialCameraPosition: [0, 400, 450],
         backgroundColor: 0x161625
       });

@@ -102,10 +102,26 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+const blockedIPsStore = new Map(); // ip -> { attempts, blockedAt, expiresAt }
+
+function trackFailedLogin(ip) {
+  const now = Date.now();
+  const entry = blockedIPsStore.get(ip) || { attempts: 0, blockedAt: null, expiresAt: null };
+  entry.attempts += 1;
+  if (entry.attempts >= 3) {
+    entry.blockedAt = new Date().toISOString();
+    entry.expiresAt = new Date(now + 15 * 60 * 1000).toISOString();
+  }
+  blockedIPsStore.set(ip, entry);
+}
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  message: { error: 'Too many login attempts from this IP, please try again after 15 minutes' },
+  handler: (req, res) => {
+    trackFailedLogin(req.ip || req.connection.remoteAddress);
+    res.status(429).json({ error: 'Too many login attempts from this IP, please try again after 15 minutes' });
+  },
   validate: { xForwardedForHeader: false }
 });
 
@@ -1545,6 +1561,76 @@ app.get('/api/settings/system', authenticate, (req, res) => {
   const config = {};
   settings.forEach(s => config[s.key] = s.value);
   res.json(config);
+});
+
+// ─── IP UNBLOCK & DUPLICATES SYSTEM ─────────────────────────────────────────
+
+app.get('/api/system/blocked-ips', authenticate, requireAdmin, (req, res) => {
+  const now = Date.now();
+  const list = [];
+  for (const [ip, info] of blockedIPsStore.entries()) {
+    if (info.expiresAt && new Date(info.expiresAt).getTime() > now) {
+      list.push({ ip, attempts: info.attempts, blockedAt: info.blockedAt, expiresAt: info.expiresAt });
+    }
+  }
+  res.json(list);
+});
+
+app.post('/api/system/unblock-ip', authenticate, requireAdmin, (req, res) => {
+  const { ip } = req.body;
+  if (!ip) return res.status(400).json({ error: 'IP address required' });
+  blockedIPsStore.delete(ip);
+  res.json({ success: true, message: `IP ${ip} unblocked successfully` });
+});
+
+app.get('/api/system/duplicates', authenticate, requireAdmin, (req, res) => {
+  try {
+    const crypto = require('crypto');
+    const files = all(`
+      SELECT f.id, f.filename, f.original_name, f.file_size, f.file_type, f.library_path, f.model_id, m.name as model_name
+      FROM files f
+      LEFT JOIN models m ON f.model_id = m.id
+      WHERE f.file_size > 0
+    `);
+
+    const sizeGroups = {};
+    for (const f of files) {
+      if (!sizeGroups[f.file_size]) sizeGroups[f.file_size] = [];
+      sizeGroups[f.file_size].push(f);
+    }
+
+    const duplicateGroups = [];
+    for (const [size, candidateFiles] of Object.entries(sizeGroups)) {
+      if (candidateFiles.length < 2) continue;
+
+      const hashGroups = {};
+      for (const f of candidateFiles) {
+        const filePath = f.library_path || path.join(UPLOADS_DIR, f.filename);
+        if (!fs.existsSync(filePath)) continue;
+        try {
+          const fileBuffer = fs.readFileSync(filePath);
+          const hash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+          if (!hashGroups[hash]) hashGroups[hash] = [];
+          hashGroups[hash].push(f);
+        } catch (e) {}
+      }
+
+      for (const [hash, matchingFiles] of Object.entries(hashGroups)) {
+        if (matchingFiles.length > 1) {
+          duplicateGroups.push({
+            hash,
+            size: Number(size),
+            files: matchingFiles
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, duplicatesCount: duplicateGroups.length, groups: duplicateGroups });
+  } catch (e) {
+    console.error('Duplicate scan error:', e);
+    res.status(500).json({ error: 'Failed to scan for duplicate files' });
+  }
 });
 
 app.post('/api/settings/system', authenticate, (req, res) => {

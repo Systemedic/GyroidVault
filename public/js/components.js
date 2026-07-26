@@ -1217,6 +1217,24 @@ const UI = {
           <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">If enabled, guests will be forced to log in before viewing any content.</p>
         </div>
 
+        <h3 style="grid-column: 1 / -1; margin-top: 20px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">🛡️ IP Auto-Block & Rate Limits</h3>
+        <div style="grid-column: 1 / -1;" id="blocked-ips-container">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="App.loadBlockedIps()">Refresh Blocked IPs</button>
+            <span style="font-size:0.75rem;color:var(--text-muted)">Unblock IP addresses flagged for failed login attempts.</span>
+          </div>
+          <div id="blocked-ips-list" style="margin-top:8px"></div>
+        </div>
+
+        <h3 style="grid-column: 1 / -1; margin-top: 20px; margin-bottom: 10px; border-bottom: 1px solid var(--border-color); padding-bottom: 5px;">🔍 Duplicate File Finder</h3>
+        <div style="grid-column: 1 / -1;" id="duplicates-scanner-container">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="App.scanForDuplicates()">Scan for Duplicate Files</button>
+            <span style="font-size:0.75rem;color:var(--text-muted)">Scans library using SHA-256 hashes to find identical 3D models.</span>
+          </div>
+          <div id="duplicates-results" style="margin-top:8px"></div>
+        </div>
+
         <div style="grid-column: 1 / -1; margin-top:20px">
           <button type="submit" class="btn btn-primary">Save System Settings</button>
         </div>
