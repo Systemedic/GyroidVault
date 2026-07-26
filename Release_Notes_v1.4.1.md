@@ -1,49 +1,18 @@
-# GyroidVault v1.4.1 Release Notes
+Welcome to version 1.4.1. This update introduces interactive 3D G-code layer slicing inspection, dynamic build plate scaling, IP rate-limit administration, duplicate file detection, and redesigned security and maintenance panels.
 
-GyroidVault v1.4.1 introduces interactive 3D G-code layer slicing inspection, dynamic build plate scaling, IP rate-limit management for administrators, duplicate file scanning, and dedicated Security and Maintenance settings panels.
+## New Features
 
----
+- **Interactive 3D G-Code Layer Inspection**: You can now inspect parsed G-Code files layer by layer directly in your browser! The built-in 3D viewer features an interactive layer slider showing real-time layer numbers (`Layer X / Y`) and live Z-height readouts in mm.
+- **Dynamic Build Volume Grid & Filament Colors**: The G-code 3D previewer automatically detects your printer model from metadata and resizes the build volume grid accordingly (supporting Bambu Lab 256x256, Prusa 250x210, Creality Ender 220x220, Voron 300x300, and more). It also matches the highlight colors to your specified filament.
+- **Auto-Centered 3D Camera Framing**: The 3D camera automatically calculates the exact bounding box of parsed G-Code models, centering the camera target and framing the view perfectly regardless of slicer bed offsets.
+- **Duplicate File Finder**: A brand new duplicate model scanner under **Settings -> Maintenance**. It uses SHA-256 file hashing to quickly discover duplicate STL, 3MF, or G-Code files across your library.
+- **IP Auto-Block & Rate-Limit Management**: Administrators can now monitor IP addresses flagged for failed login attempts under **Settings -> Security** and unblock them with a single click without restarting the server.
+- **Redesigned Settings Tabs**: The settings area has been reorganized with dedicated **Security** and **Maintenance** tabs, featuring modern iOS-style toggle switches for Open Registration and Private Instance Mode.
+- **Global Search Shortcut (`Ctrl + K` / `Cmd + K`)**: Easily trigger the global search bar from anywhere in the application by pressing `Ctrl+K` on Windows/Linux or `Cmd+K` on macOS.
+- **Smart Printer UI**: The "Send to Printer" button now cleanly hides itself when no printers are configured, preventing unnecessary clicks.
 
-## What's New in v1.4.1
+## Bug Fixes
 
-### Interactive 3D G-Code Layer Previewer
-- Added a full 3D G-code layer inspector powered by WebGL.
-- Includes a layer range slider with real-time layer numbers (`Layer X / Y`) and live Z-height readouts (in mm).
-- Automatic camera auto-framing and bounding-box centering ensure 3D G-code models are positioned cleanly in the viewport regardless of slicer offsets.
-
-### Dynamic Build Volume Grid & Filament Colors
-- The 3D G-code grid dynamically scales to match your printer's build volume based on metadata (Bambu Lab 256x256, Prusa 250x210, Creality Ender 220x220, Voron 300x300).
-- Highlight colors adapt automatically to parsed filament colors and materials.
-
-### Security & IP Auto-Block Management
-- Dedicated **Security & Access** panel in Admin Settings.
-- Modern iOS-style toggle switches for Open Registration and Private Instance Mode.
-- Live **IP Auto-Block Table**: View IP addresses flagged for failed login attempts with a 1-click **Unblock** button.
-
-### Duplicate File Finder
-- Dedicated **Maintenance & Duplicates** panel in Admin Settings.
-- Scans your entire 3D library using SHA-256 file hashes to detect duplicate STL, 3MF, and G-code files across folders and models.
-
-### Global Search Shortcut (`Ctrl + K` / `Cmd + K`)
-- Pressing `Ctrl + K` (or `Cmd + K` on macOS) from any page immediately focuses the global search bar.
-
-### User Interface & Usability Improvements
-- The **Send to Printer** button now only renders when at least one printer is configured in settings.
-- Added direct **Preview G-Code** action buttons in G-code profile cards and file lists.
-
-### Bug Fixes
-- **Terabyte Formatting**: Extended file size formatting scale to TB and PB, resolving `"1.1 undefined"` library size formatting issues for large collections.
-- **Deletion Security Guards**: Added strict authentication and role-based guards on model and file deletion API endpoints.
-
----
-
-## Upgrade Instructions
-
-### Unraid (Community Apps)
-Update the container repository tag to `ghcr.io/teecodedev/gyroidvault:v1.4.1` or `:latest` and click **Apply**.
-
-### Docker Compose
-```yaml
-image: ghcr.io/teecodedev/gyroidvault:v1.4.1
-```
-Run `docker compose pull && docker compose up -d`.
+- **Terabyte Library Size Formatting**: Fixed a formatting issue where library storage sizes exceeding 1 TB were displayed as `"1.1 undefined"`. Units now correctly support TB and PB scale.
+- **Deletion Security Guards**: Enforced strict authentication and role-based guards on model and file deletion API endpoints to prevent unauthorized actions.
+- **Docker Workflow Stability**: Upgraded the container build pipeline to Node 22 LTS, resolving registry timeout issues during multi-architecture image builds.
