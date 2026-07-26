@@ -41,7 +41,6 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern=v{{version}}
-            type=raw,value=beta,enable=${{ github.ref == 'refs/heads/beta' }}
             type=raw,value=${{ github.ref_name }}
 
       - name: Build and push Docker image
