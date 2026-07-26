@@ -22,6 +22,9 @@
 ## Features
 
 - **Dark/Light Mode & Themes**: Toggle between dark and light themes, and choose from multiple application themes (e.g., Glass) depending on your preference.
+- **Interactive 3D G-Code Previewer**: Inspect parsed G-code layer by layer with live layer numbers, Z-heights, auto-centered camera framing, dynamic build volume grids, and filament color matching.
+- **IP Auto-Block & Security Control**: Monitor rate-limited IP addresses from failed login attempts and unblock them with 1-click in the dedicated Security settings tab.
+- **Duplicate File Finder**: Scan your 3D model library using SHA-256 file hashes to locate identical 3D models across your collection.
 - **Batch Actions**: Use `Ctrl+Click` (or `Shift+Click`) to select multiple models in the grid to bulk tag, delete, or add to collections at once.
 - **Folder Watching**: Automatically scan your local directories to import models, or upload them manually.
 - **Folder View Collages**: Browse your local directories directly. Folders automatically generate dynamic 2x2 image collages based on the 3D files inside them.
