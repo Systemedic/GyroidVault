@@ -1465,8 +1465,13 @@ const App = {
     this.el.innerHTML = '<div style="padding:40px;text-align:center"><div class="skeleton" style="width:200px;height:30px;margin:0 auto 20px"></div><div class="skeleton" style="width:100%;height:200px"></div></div>';
     try {
       const model = await API.getModel(id);
+      const config = await API.getSystemSettings().catch(() => ({}));
+      let printers = [];
+      try { if (config.printers) printers = JSON.parse(config.printers); } catch(e){}
+      const hasPrinters = printers.length > 0;
+
       this.el.innerHTML = `
-        ${UI.modelDetail(model)}`;
+        ${UI.modelDetail(model, hasPrinters)}`;
       // Initialize 3D viewer if STL or 3MF file exists (prefer STL as it's more stable)
       const files = model.files || [];
       const stlFile = files.find(f => f.file_type === 'stl') || files.find(f => f.file_type === '3mf');

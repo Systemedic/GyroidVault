@@ -364,7 +364,7 @@ const UI = {
       </form>`;
   },
 
-  modelDetail(model) {
+  modelDetail(model, hasPrinters = false) {
     const canEdit = App.currentUser?.role === 'admin' || (App.currentUser?.role !== 'viewer' && model.user_id === App.currentUser?.id);
     const cat = model.category_name
       ? `<span class="badge badge-category" style="background:${model.category_color}20;color:${model.category_color};border:1px solid ${model.category_color}33">${model.category_name}</span>`
@@ -443,7 +443,7 @@ const UI = {
                   </div>
                   <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
                     <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Weight</div>
-                    <div style="font-weight:600">${meta.weight ? meta.weight + 'g' : (meta.filamentUsed ? meta.filamentUsed : 'Unknown')}</div>
+                    <div style="font-weight:600">${meta.weight ? meta.weight + 'g' : 'Unknown'}</div>
                   </div>
                   <div style="background:var(--bg-input); padding:8px; border-radius:var(--radius-sm)">
                     <div style="color:var(--text-muted); font-size:0.65rem; text-transform:uppercase; letter-spacing:0.05em">Material</div>
@@ -510,7 +510,8 @@ const UI = {
                   ` : ''}
                 </div>
                 <div style="margin-top:12px; display:flex; gap:8px">
-                  <button class="btn btn-primary btn-sm" style="flex:1" onclick="App.sendToPrinter(${f.id})">Send to Printer</button>
+                  <button class="btn btn-ghost btn-sm" style="color:var(--accent-cyan);border:1px solid rgba(0,212,255,0.4);" onclick="App.previewStl(${model.id}, '${f.url || '/uploads/'+f.filename}', 'gcode')">👁 Preview G-Code</button>
+                  ${hasPrinters ? `<button class="btn btn-primary btn-sm" style="flex:1" onclick="App.sendToPrinter(${f.id})">Send to Printer</button>` : ''}
                   <a href="/api/files/${f.id}/download/${encodeURIComponent(f.filename)}" class="btn btn-secondary btn-sm" download>Download</a>
                 </div>
               </div>
@@ -566,7 +567,7 @@ const UI = {
               `;
             }
           })() : ''}
-          ${(f.file_type === 'stl' || f.file_type === '3mf') ? `<button class="btn btn-ghost" style="padding:6px;color:var(--accent-cyan)" onclick="event.stopPropagation();App.previewStl(${model.id},'${f.url || '/uploads/'+f.filename}', '${f.file_type}')" title="Preview"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>` : ''}
+          ${(f.file_type === 'stl' || f.file_type === '3mf' || f.file_type === 'gcode') ? `<button class="btn btn-ghost" style="padding:6px;color:var(--accent-cyan)" onclick="event.stopPropagation();App.previewStl(${model.id},'${f.url || '/uploads/'+f.filename}', '${f.file_type}')" title="Preview 3D / G-Code"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg></button>` : ''}
           <a href="/api/files/${f.id}/download" class="btn btn-ghost" style="padding:6px" title="Download"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a>
           ${canEdit ? `<button class="btn btn-ghost" style="padding:6px;color:var(--error)" onclick="event.stopPropagation();App.confirmDeleteFile(${f.id},'${(f.original_name || f.filename).replace(/'/g, "\\'")}',${model.id})" title="Delete"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg></button>` : ''}
         </div>
