@@ -4,15 +4,16 @@ const path = require('path');
 const db = require('../database');
 const { parseGcodeMetadata } = require('./gcode');
 
-const SUPPORTED_EXTENSIONS = ['.stl', '.gcode', '.3mf', '.step', '.obj', '.pdf', '.txt', '.md'];
-const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg'];
+const SUPPORTED_EXTENSIONS = ['.stl', '.gcode', '.bgcode', '.3mf', '.step', '.stp', '.f3d', '.obj', '.pdf', '.txt', '.md'];
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
 
 function getFileType(filename) {
   const ext = path.extname(filename).toLowerCase();
   if (ext === '.stl') return 'stl';
-  if (ext === '.gcode') return 'gcode';
+  if (ext === '.gcode' || ext === '.bgcode') return 'gcode';
   if (ext === '.3mf') return '3mf';
-  if (ext === '.step') return 'step';
+  if (ext === '.step' || ext === '.stp') return 'step';
+  if (ext === '.f3d') return 'f3d';
   if (ext === '.obj') return 'obj';
   if (ext === '.pdf' || ext === '.txt' || ext === '.md') return 'document';
   if (IMAGE_EXTENSIONS.includes(ext)) return 'image';
@@ -140,4 +141,4 @@ async function scanLibrary(libraryPath) {
   return results;
 }
 
-module.exports = { scanLibrary };
+module.exports = { scanLibrary, getFileType, SUPPORTED_EXTENSIONS, IMAGE_EXTENSIONS };

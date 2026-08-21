@@ -423,8 +423,9 @@ app.get('/api/models/:id', (req, res) => {
       model.thumbnail_url = getThumbUrl(model.thumbnail, model.library_path);
     }
 
-    model.files = all('SELECT f.*, u.username as uploader_name FROM files f LEFT JOIN users u ON f.user_id=u.id WHERE f.model_id=? ORDER BY uploaded_at DESC', [model.id]).map(f => ({
+    model.files = all('SELECT f.*, u.username as uploader_name FROM files f LEFT JOIN users u ON f.user_id=u.id WHERE f.model_id=? ORDER BY (CASE WHEN f.id = ? THEN 0 ELSE 1 END), f.uploaded_at DESC', [model.id, model.preview_file_id || 0]).map(f => ({
       ...f,
+      is_preview: Boolean(model.preview_file_id && f.id === model.preview_file_id),
       url: getFileUrl(f)
     }));
     model.prints = all('SELECT ph.*,mat.name as material_name, u.username as printer_name FROM print_history ph LEFT JOIN materials mat ON ph.material_id=mat.id LEFT JOIN users u ON ph.user_id=u.id WHERE ph.model_id=? ORDER BY ph.printed_at DESC', [model.id]);
@@ -442,6 +443,31 @@ app.get('/api/models/:id', (req, res) => {
 
     res.json(model);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch model' }); }
+});
+
+app.put('/api/models/:id/preview-file', authenticate, (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { file_id } = req.body;
+    const model = get('SELECT * FROM models WHERE id=?', [id]);
+    if (!model) return res.status(404).json({ error: 'Model not found' });
+    if (req.user.role !== 'admin' && model.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    const file = get('SELECT * FROM files WHERE id=? AND model_id=?', [Number(file_id), id]);
+    if (!file) return res.status(404).json({ error: 'File not found on this model' });
+
+    run("UPDATE models SET preview_file_id=?, updated_at=datetime('now') WHERE id=?", [file.id, id]);
+
+    // If file has a thumbnail, update model thumbnail as well
+    if (file.thumbnail) {
+      run('UPDATE models SET thumbnail=? WHERE id=?', [file.thumbnail, id]);
+    }
+
+    res.json({ success: true, preview_file_id: file.id });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to set preview file' });
+  }
 });
 
 app.post('/api/models/:id/versions', authenticate, (req, res) => {
@@ -484,7 +510,7 @@ app.post('/api/library/scan', authenticate, async (req, res) => {
 app.post('/api/models', authenticate, (req, res) => {
   const userId = req.user.id;
   try {
-    const { name, description, print_tips, source_url, category_id, tags, custom_meta } = req.body;
+    const { name, description, print_tips, source_url, category_id, tags, custom_meta, parent_folder, create_subfolder } = req.body;
     if (!name?.trim()) return res.status(400).json({ error: 'Name is required' });
     
     let metaStr = '{}';
@@ -492,8 +518,18 @@ app.post('/api/models', authenticate, (req, res) => {
       metaStr = typeof custom_meta === 'string' ? custom_meta : JSON.stringify(custom_meta);
     }
     
-    const r = run('INSERT INTO models (name,description,print_tips,source_url,category_id,custom_meta,user_id) VALUES (?,?,?,?,?,?,?)',
-      [name.trim(), description||'', print_tips||'', source_url||'', category_id||null, metaStr, userId]);
+    // Create library folder for this model
+    const safeName = name.trim().replace(/[<>:"/\\|?*]/g, '').trim() || `model_${Date.now()}`;
+    const basePath = parent_folder ? path.join(LIBRARY_PATH, parent_folder) : LIBRARY_PATH;
+    const libPath = create_subfolder !== false && create_subfolder !== 'false' ? path.join(basePath, safeName) : basePath;
+    try {
+      if (!fs.existsSync(libPath)) fs.mkdirSync(libPath, { recursive: true });
+    } catch (dirErr) {
+      console.warn('Could not create library folder for model:', dirErr);
+    }
+
+    const r = run('INSERT INTO models (name,description,print_tips,source_url,category_id,custom_meta,user_id,library_path) VALUES (?,?,?,?,?,?,?,?)',
+      [name.trim(), description||'', print_tips||'', source_url||'', category_id||null, metaStr, userId, libPath]);
     if (tags?.length) { 
       for (const t of tags) {
         let tagId = t;
@@ -644,16 +680,48 @@ app.post('/api/upload-slicer', authenticate, upload.single('file'), (req, res) =
     const filename = req.file.originalname;
     const name = path.parse(filename).name;
     const userId = req.user.id;
-    
-    // Create new model
-    const r = run('INSERT INTO models (name, user_id) VALUES (?, ?)', [name, userId]);
-    const modelId = r.lastId;
-    
-    // Save file
+    const safeName = name.replace(/[<>:"/\\|?*]/g, '').trim() || `model_${Date.now()}`;
+    const libPath = path.join(LIBRARY_PATH, safeName);
+    if (!fs.existsSync(libPath)) fs.mkdirSync(libPath, { recursive: true });
+
+    let finalDest = path.join(libPath, filename);
+    let counter = 1;
+    while (fs.existsSync(finalDest)) {
+      const ext = path.extname(filename);
+      const base = path.basename(filename, ext);
+      finalDest = path.join(libPath, `${base}_${counter}${ext}`);
+      counter++;
+    }
+    fs.copyFileSync(req.file.path, finalDest);
+    try { fs.unlinkSync(req.file.path); } catch (e) {}
+
+    // Extract metadata & thumbnail
     const fileType = getFileType(filename);
-    const size = fs.statSync(req.file.path).size;
-    run('INSERT INTO files (model_id, filename, original_name, file_size, file_type) VALUES (?,?,?,?,?)',
-      [modelId, req.file.filename, filename, size, fileType]);
+    const size = fs.statSync(finalDest).size;
+    let metadata = null;
+    let thumbnail = null;
+
+    if (fileType === 'gcode') {
+      const { parseGcodeMetadata, extractGcodeThumbnail } = require('./utils/gcode');
+      const meta = parseGcodeMetadata(finalDest);
+      if (meta) metadata = JSON.stringify(meta);
+      thumbnail = extractGcodeThumbnail(finalDest, UPLOADS_DIR);
+    } else if (fileType === '3mf') {
+      const { extract3mfThumbnail } = require('./utils/3mf');
+      thumbnail = extract3mfThumbnail(finalDest, UPLOADS_DIR);
+    }
+
+    // Create new model
+    const r = run('INSERT INTO models (name, user_id, library_path, thumbnail) VALUES (?, ?, ?, ?)',
+      [name, userId, libPath, thumbnail]);
+    const modelId = r.lastId;
+
+    const rFile = run('INSERT INTO files (model_id, filename, original_name, file_size, file_type, metadata, library_path, thumbnail) VALUES (?,?,?,?,?,?,?,?)',
+      [modelId, path.basename(finalDest), filename, size, fileType, metadata, finalDest, thumbnail]);
+    
+    if (fileType === 'stl' || fileType === '3mf') {
+      run('UPDATE models SET preview_file_id=? WHERE id=?', [rFile.lastId, modelId]);
+    }
       
     res.status(201).json({ success: true, model_id: modelId, message: 'Uploaded successfully' });
   } catch (e) {
@@ -669,8 +737,21 @@ app.post('/api/models/:id/files', authenticate, upload.array('files', 20), (req,
     if (!model) return res.status(404).json({ error: 'Model not found' });
     if (req.user.role !== 'admin' && model.user_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
     if (!req.files?.length) return res.status(400).json({ error: 'No files uploaded' });
-    const { parseGcodeMetadata } = require('./utils/gcode');
+    const { parseGcodeMetadata, extractGcodeThumbnail } = require('./utils/gcode');
+    const { extract3mfThumbnail } = require('./utils/3mf');
     const uploaded = [];
+
+    // Ensure model has a library directory
+    let libPath = model.library_path;
+    if (!libPath || !fs.existsSync(libPath)) {
+      const safeName = model.name.replace(/[<>:"/\\|?*]/g, '').trim() || `model_${id}`;
+      const basePath = req.body.parent_folder ? path.join(LIBRARY_PATH, req.body.parent_folder) : LIBRARY_PATH;
+      libPath = req.body.create_subfolder !== 'false' ? path.join(basePath, safeName) : basePath;
+      if (!fs.existsSync(libPath)) fs.mkdirSync(libPath, { recursive: true });
+      run('UPDATE models SET library_path=? WHERE id=?', [libPath, id]);
+      model.library_path = libPath;
+    }
+
     for (const file of req.files) {
       // Malware Scanning / Magic Bytes validation
       try {
@@ -690,46 +771,10 @@ app.post('/api/models/:id/files', authenticate, upload.array('files', 20), (req,
       }
       
       const ft = getFileType(file.originalname);
-      let metadata = null;
-      if (ft === 'gcode') {
-        const meta = parseGcodeMetadata(file.path);
-        if (meta) metadata = JSON.stringify(meta);
-        
-        if (!model.thumbnail) {
-          const { extractGcodeThumbnail } = require('./utils/gcode');
-          const thumb = extractGcodeThumbnail(file.path, UPLOADS_DIR);
-          if (thumb) {
-            run('UPDATE models SET thumbnail=? WHERE id=?', [thumb, id]);
-            model.thumbnail = thumb;
-          }
-        }
-      } else if (ft === '3mf' && !model.thumbnail) {
-        const { extract3mfThumbnail } = require('./utils/3mf');
-        const thumb = extract3mfThumbnail(file.path, UPLOADS_DIR);
-        if (thumb) {
-          run('UPDATE models SET thumbnail=? WHERE id=?', [thumb, id]);
-          model.thumbnail = thumb;
-        }
-      }
-      if (ft === 'image' && !model.thumbnail) run('UPDATE models SET thumbnail=? WHERE id=?', [file.filename, id]);
       
-      // Move file to library if model has a library path or we can create one
-      let finalPath = file.path;
-      let libPath = model.library_path;
-      
-      if (!libPath) {
-        // Create a folder for the model in library
-        const safeName = model.name.replace(/[<>:"/\\|?*]/g, '').trim() || `model_${id}`;
-        const basePath = req.body.parent_folder ? path.join(LIBRARY_PATH, req.body.parent_folder) : LIBRARY_PATH;
-        libPath = req.body.create_subfolder !== 'false' ? path.join(basePath, safeName) : basePath;
-        if (!fs.existsSync(libPath)) fs.mkdirSync(libPath, { recursive: true });
-        run('UPDATE models SET library_path=? WHERE id=?', [libPath, id]);
-      }
-
-      const destPath = path.join(libPath, file.originalname);
+      // Move file into library folder
+      let finalDest = path.join(libPath, file.originalname);
       try {
-        // Handle filename collisions in library
-        let finalDest = destPath;
         let counter = 1;
         while (fs.existsSync(finalDest)) {
           const ext = path.extname(file.originalname);
@@ -739,14 +784,46 @@ app.post('/api/models/:id/files', authenticate, upload.array('files', 20), (req,
         }
         fs.copyFileSync(file.path, finalDest);
         fs.unlinkSync(file.path);
-        finalPath = finalDest;
       } catch (err) {
-        console.error('Failed to move uploaded file to library (using copy fallback):', err);
+        console.error('Failed to move uploaded file to library:', err);
+        finalDest = file.path;
       }
 
-      const r = run('INSERT INTO files (model_id,filename,original_name,file_type,file_size,metadata,library_path) VALUES (?,?,?,?,?,?,?)',
-        [id, file.filename, file.originalname, ft, file.size, metadata, finalPath]);
-      uploaded.push({ id: r.lastId, model_id: id, filename: file.filename, original_name: file.originalname, file_type: ft, file_size: file.size, metadata, library_path: finalPath });
+      let metadata = null;
+      let fileThumbnail = null;
+
+      if (ft === 'gcode') {
+        const meta = parseGcodeMetadata(finalDest);
+        if (meta) metadata = JSON.stringify(meta);
+        fileThumbnail = extractGcodeThumbnail(finalDest, UPLOADS_DIR);
+        if (fileThumbnail && !model.thumbnail) {
+          run('UPDATE models SET thumbnail=? WHERE id=?', [fileThumbnail, id]);
+          model.thumbnail = fileThumbnail;
+        }
+      } else if (ft === '3mf') {
+        fileThumbnail = extract3mfThumbnail(finalDest, UPLOADS_DIR);
+        if (fileThumbnail && !model.thumbnail) {
+          run('UPDATE models SET thumbnail=? WHERE id=?', [fileThumbnail, id]);
+          model.thumbnail = fileThumbnail;
+        }
+      } else if (ft === 'image') {
+        fileThumbnail = path.basename(finalDest);
+        if (!model.thumbnail) {
+          run('UPDATE models SET thumbnail=? WHERE id=?', [fileThumbnail, id]);
+          model.thumbnail = fileThumbnail;
+        }
+      }
+
+      const r = run('INSERT INTO files (model_id,filename,original_name,file_type,file_size,metadata,library_path,thumbnail) VALUES (?,?,?,?,?,?,?,?)',
+        [id, path.basename(finalDest), file.originalname, ft, file.size, metadata, finalDest, fileThumbnail]);
+      
+      // If model has no preview file set, default to first STL or 3MF
+      if (!model.preview_file_id && (ft === 'stl' || ft === '3mf')) {
+        run('UPDATE models SET preview_file_id=? WHERE id=?', [r.lastId, id]);
+        model.preview_file_id = r.lastId;
+      }
+
+      uploaded.push({ id: r.lastId, model_id: id, filename: path.basename(finalDest), original_name: file.originalname, file_type: ft, file_size: file.size, metadata, library_path: finalDest, thumbnail: fileThumbnail });
     }
     run("UPDATE models SET updated_at=datetime('now') WHERE id=?", [id]);
     res.status(201).json(uploaded);
@@ -1315,17 +1392,18 @@ app.get('/api/browse', (req, res) => {
     }
     
     const items = fs.readdirSync(fullPath, { withFileTypes: true });
-    const supportedExts = ['.stl', '.gcode', '.3mf', '.step', '.obj'];
-    const imageExts = ['.png', '.jpg', '.jpeg'];
+    const supportedExts = ['.stl', '.gcode', '.bgcode', '.3mf', '.step', '.stp', '.f3d', '.obj'];
+    const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
     
     const dbThumbs = all('SELECT library_path, thumbnail FROM files WHERE thumbnail IS NOT NULL AND library_path IS NOT NULL');
     const thumbMap = new Map();
     for (const row of dbThumbs) thumbMap.set(row.library_path, row.thumbnail);
 
-    const dbFilesList = all('SELECT model_id, library_path FROM files WHERE library_path IS NOT NULL');
-    const fileModelMap = new Map();
-    for (const row of dbFilesList) fileModelMap.set(row.library_path, row.model_id);
+    const dbFilesList = all('SELECT id, model_id, library_path, metadata, thumbnail FROM files WHERE library_path IS NOT NULL');
+    const dbFileMap = new Map();
+    for (const row of dbFilesList) dbFileMap.set(row.library_path, row);
 
+    const { parseGcodeMetadata } = require('./utils/gcode');
     const folders = [];
     const files = [];
     
@@ -1375,26 +1453,39 @@ app.get('/api/browse', (req, res) => {
           
           let fileType = 'other';
           if (ext === '.stl') fileType = 'stl';
-          else if (ext === '.gcode') fileType = 'gcode';
+          else if (ext === '.gcode' || ext === '.bgcode') fileType = 'gcode';
           else if (ext === '.3mf') fileType = '3mf';
-          else if (ext === '.step') fileType = 'step';
+          else if (ext === '.step' || ext === '.stp') fileType = 'step';
+          else if (ext === '.f3d') fileType = 'f3d';
           else if (ext === '.obj') fileType = 'obj';
           else if (imageExts.includes(ext)) fileType = 'image';
           
           let thumbnailUrl = null;
-          const thumb = thumbMap.get(filePath);
+          const dbFile = dbFileMap.get(filePath);
+          const thumb = dbFile?.thumbnail || thumbMap.get(filePath);
           if (thumb) {
             thumbnailUrl = getThumbUrl(thumb, path.dirname(filePath));
           }
 
+          let metadata = null;
+          if (dbFile?.metadata) {
+            try { metadata = typeof dbFile.metadata === 'string' ? JSON.parse(dbFile.metadata) : dbFile.metadata; } catch(e){}
+          }
+          if (!metadata && (fileType === 'gcode')) {
+            metadata = parseGcodeMetadata(filePath);
+          }
+
           files.push({
+            id: dbFile ? dbFile.id : null,
             name: item.name,
             size: stat.size,
             type: fileType,
+            ext: ext.replace('.', ''),
             url: encodedUrl,
             thumbnailUrl,
+            metadata,
             folderPath: reqPath,
-            model_id: fileModelMap.get(filePath) || null
+            model_id: dbFile ? dbFile.model_id : null
           });
         }
       }
@@ -1463,14 +1554,15 @@ app.get('/api/browse/search', (req, res) => {
     const thumbMap = new Map();
     for (const row of dbThumbs) thumbMap.set(row.library_path, row.thumbnail);
 
-    const dbFilesList = all('SELECT model_id, library_path FROM files WHERE library_path IS NOT NULL');
-    const fileModelMap = new Map();
-    for (const row of dbFilesList) fileModelMap.set(row.library_path, row.model_id);
+    const dbFilesList = all('SELECT id, model_id, library_path, metadata, thumbnail FROM files WHERE library_path IS NOT NULL');
+    const dbFileMap = new Map();
+    for (const row of dbFilesList) dbFileMap.set(row.library_path, row);
 
+    const { parseGcodeMetadata } = require('./utils/gcode');
     const folders = [];
     const files = [];
-    const supportedExts = ['.stl', '.gcode', '.3mf', '.step', '.obj'];
-    const imageExts = ['.png', '.jpg', '.jpeg'];
+    const supportedExts = ['.stl', '.gcode', '.bgcode', '.3mf', '.step', '.stp', '.f3d', '.obj'];
+    const imageExts = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
     
     function walk(dir, relPath) {
       let entries;
@@ -1517,9 +1609,10 @@ app.get('/api/browse/search', (req, res) => {
             if (supportedExts.includes(ext) || imageExts.includes(ext)) {
               let fileType = 'other';
               if (ext === '.stl') fileType = 'stl';
-              else if (ext === '.gcode') fileType = 'gcode';
+              else if (ext === '.gcode' || ext === '.bgcode') fileType = 'gcode';
               else if (ext === '.3mf') fileType = '3mf';
-              else if (ext === '.step') fileType = 'step';
+              else if (ext === '.step' || ext === '.stp') fileType = 'step';
+              else if (ext === '.f3d') fileType = 'f3d';
               else if (ext === '.obj') fileType = 'obj';
               else if (imageExts.includes(ext)) fileType = 'image';
               
@@ -1527,19 +1620,31 @@ app.get('/api/browse/search', (req, res) => {
               const encodedUrl = '/library-files/' + childRel.split('/').map(s => encodeURIComponent(s)).join('/');
               
               let thumbnailUrl = null;
-              const thumb = thumbMap.get(childFull);
+              const dbFile = dbFileMap.get(childFull);
+              const thumb = dbFile?.thumbnail || thumbMap.get(childFull);
               if (thumb) {
                 thumbnailUrl = getThumbUrl(thumb, path.dirname(childFull));
               }
 
+              let metadata = null;
+              if (dbFile?.metadata) {
+                try { metadata = typeof dbFile.metadata === 'string' ? JSON.parse(dbFile.metadata) : dbFile.metadata; } catch(e){}
+              }
+              if (!metadata && fileType === 'gcode') {
+                metadata = parseGcodeMetadata(childFull);
+              }
+
               files.push({
+                id: dbFile ? dbFile.id : null,
                 name: item.name,
                 size: stat.size,
                 type: fileType,
+                ext: ext.replace('.', ''),
                 url: encodedUrl,
                 thumbnailUrl,
+                metadata,
                 folderPath: relPath,
-                model_id: fileModelMap.get(filePath) || null
+                model_id: dbFile ? dbFile.model_id : null
               });
             }
           }

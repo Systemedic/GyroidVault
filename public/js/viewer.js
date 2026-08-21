@@ -16,7 +16,7 @@ const Viewer = {
     const container = document.getElementById(containerId);
     if (!container || typeof THREE === 'undefined') return;
     const is3MF = fileType === '3mf' || (!fileType && fileUrl.toLowerCase().includes('.3mf'));
-    const isGcode = fileType === 'gcode' || (!fileType && fileUrl.toLowerCase().includes('.gcode'));
+    const isGcode = fileType === 'gcode' || fileType === 'bgcode' || (!fileType && (fileUrl.toLowerCase().includes('.gcode') || fileUrl.toLowerCase().includes('.bgcode')));
     console.log('[Viewer] Create:', { fileUrl, fileType, is3MF, isGcode });
     
     if (isGcode && typeof GCodePreview !== 'undefined') {

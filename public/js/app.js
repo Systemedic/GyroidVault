@@ -187,14 +187,10 @@ const App = {
   },
 
   toggleTheme() {
-    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-    if (isLight) {
-      document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.setAttribute('data-theme', 'light');
-      localStorage.setItem('theme', 'light');
-    }
+    const current = document.documentElement.getAttribute('data-theme') || localStorage.getItem('gv_theme') || 'glass';
+    const nextTheme = current === 'light' ? 'glass' : 'light';
+    document.documentElement.setAttribute('data-theme', nextTheme);
+    localStorage.setItem('gv_theme', nextTheme);
     this.updateThemeIcon();
   },
 
@@ -205,6 +201,7 @@ const App = {
     btn.innerHTML = isLight 
       ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`
       : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>`;
+    btn.title = isLight ? "Switch to Dark Mode" : "Switch to Light Mode";
   },
 
   async loadCache() {
@@ -1472,13 +1469,15 @@ const App = {
 
       this.el.innerHTML = `
         ${UI.modelDetail(model, hasPrinters)}`;
-      // Initialize 3D viewer if STL or 3MF file exists (prefer STL as it's more stable)
+      // Initialize 3D viewer using chosen preview file or first stl/3mf
       const files = model.files || [];
-      const stlFile = files.find(f => f.file_type === 'stl') || files.find(f => f.file_type === '3mf');
-      if (stlFile && typeof Viewer !== 'undefined') {
-        const stlUrl = `${stlFile.url || '/uploads/'+stlFile.filename}?t=${Date.now()}`;
+      const previewFile = (model.preview_file_id && files.find(f => f.id === model.preview_file_id)) ||
+        files.find(f => f.file_type === 'stl') || files.find(f => f.file_type === '3mf');
+
+      if (previewFile && typeof Viewer !== 'undefined') {
+        const stlUrl = `${previewFile.url || '/uploads/'+previewFile.filename}?t=${Date.now()}`;
         setTimeout(async () => {
-          const v = Viewer.create(`stl-viewer-${model.id}`, stlUrl, stlFile.file_type);
+          const v = Viewer.create(`stl-viewer-${model.id}`, stlUrl, previewFile.file_type);
           if (v && !model.thumbnail_url) {
             setTimeout(() => Viewer.takeSnapshot(model.id, v.renderer, v.scene, v.camera), 2500);
           }
@@ -1486,6 +1485,123 @@ const App = {
       }
     } catch (e) {
       this.el.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div><div class="empty-state-text">Model not found</div></div>';
+    }
+  },
+
+  async setPreviewFile(modelId, fileId) {
+    try {
+      await API.setPreviewFile(modelId, fileId);
+      this.toast('Primary preview file updated');
+      this.renderModelDetail(modelId);
+    } catch (err) {
+      this.toast(err.message, 'error');
+    }
+  },
+
+  setDefaultMaterial(val) {
+    localStorage.setItem('gv_default_material', val);
+    this.toast('Default print material updated');
+  },
+
+  toggleDescTab(tab) {
+    const writeTab = document.getElementById('desc-tab-write');
+    const prevTab = document.getElementById('desc-tab-preview');
+    const input = document.getElementById('model-description-input');
+    const preview = document.getElementById('model-description-preview');
+    if (!writeTab || !prevTab || !input || !preview) return;
+
+    if (tab === 'write') {
+      writeTab.classList.add('active');
+      prevTab.classList.remove('active');
+      input.style.display = 'block';
+      preview.style.display = 'none';
+    } else {
+      prevTab.classList.add('active');
+      writeTab.classList.remove('active');
+      input.style.display = 'none';
+      preview.style.display = 'block';
+      preview.innerHTML = UI.renderMarkdown(input.value) || '<div style="color:var(--text-muted);font-style:italic">No description entered yet.</div>';
+    }
+  },
+
+  openBrowseFileModal(fileJsonEncoded) {
+    let file;
+    try {
+      file = JSON.parse(decodeURIComponent(fileJsonEncoded));
+    } catch (e) {
+      console.error('Failed to parse file json', e);
+      return;
+    }
+
+    const is3D = file.type === 'stl' || file.type === '3mf';
+    const isGcode = file.type === 'gcode';
+    const meta = file.metadata || {};
+
+    let metadataRows = '';
+    const metaEntries = [];
+    if (meta.printTime) metaEntries.push({ label: 'Est. Print Time', val: meta.printTime });
+    if (meta.filamentType) metaEntries.push({ label: 'Filament', val: meta.filamentType });
+    if (meta.tempNozzle) metaEntries.push({ label: 'Nozzle Temp', val: `${meta.tempNozzle}°C` });
+    if (meta.tempBed) metaEntries.push({ label: 'Bed Temp', val: `${meta.tempBed}°C` });
+    if (meta.layerHeight) metaEntries.push({ label: 'Layer Height', val: `${meta.layerHeight} mm` });
+    if (meta.fillDensity) metaEntries.push({ label: 'Infill', val: meta.fillDensity });
+    if (meta.slicer) metaEntries.push({ label: 'Slicer', val: meta.slicer });
+    if (meta.printerModel) metaEntries.push({ label: 'Printer Model', val: meta.printerModel });
+    if (meta.filamentWeight) metaEntries.push({ label: 'Filament Used', val: `${meta.filamentWeight}g` });
+
+    if (metaEntries.length > 0) {
+      metadataRows = `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));gap:8px;margin-bottom:16px">
+          ${metaEntries.map(e => `
+            <div style="background:var(--bg-input);padding:8px 10px;border-radius:var(--radius-sm);border:1px solid var(--border)">
+              <div style="color:var(--text-muted);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.05em">${e.label}</div>
+              <div style="font-weight:600;font-size:0.85rem;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${e.val}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    let viewerArea = '';
+    if (is3D || isGcode) {
+      viewerArea = `
+        <div id="browse-file-viewer-container" style="width:100%;height:320px;background:var(--bg-secondary);border-radius:var(--radius-md);overflow:hidden;position:relative;margin-bottom:16px;border:1px solid var(--border)">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted)">Loading 3D Preview...</div>
+        </div>
+      `;
+    } else if (file.type === 'image') {
+      viewerArea = `
+        <div style="width:100%;max-height:360px;display:flex;align-items:center;justify-content:center;background:var(--bg-secondary);border-radius:var(--radius-md);overflow:hidden;margin-bottom:16px;border:1px solid var(--border)">
+          <img src="${file.url}" style="max-width:100%;max-height:360px;object-fit:contain" alt="${file.name}">
+        </div>
+      `;
+    }
+
+    const modalContent = `
+      <div>
+        ${viewerArea}
+        ${metadataRows}
+        <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;margin-top:16px;flex-wrap:wrap">
+          <div style="font-size:0.8rem;color:var(--text-muted)">
+            Size: <strong>${UI.formatSize(file.size)}</strong>
+            ${file.folderPath ? ` · 📁 ${file.folderPath}` : ''}
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            ${(is3D || isGcode) ? `<button class="btn btn-secondary btn-sm" onclick="App.previewFileModal('${file.url}', '${file.name.replace(/'/g, "\\'")}', '${file.type}')">Full Screen</button>` : ''}
+            ${file.id ? `<a href="/api/files/${file.id}/download" class="btn btn-primary btn-sm" download>Download</a>` : `<a href="${file.url}" class="btn btn-primary btn-sm" download="${file.name}">Download</a>`}
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.openModal(file.name, modalContent);
+
+    if (is3D || isGcode) {
+      setTimeout(() => {
+        if (typeof Viewer !== 'undefined') {
+          Viewer.create('browse-file-viewer-container', file.url, file.type);
+        }
+      }, 100);
     }
   },
 
@@ -1520,7 +1636,7 @@ const App = {
     }
   },
 
-  previewFileModal(url, name) {
+  previewFileModal(url, name, fileType = null) {
     if (typeof Viewer === 'undefined') return;
     const modalHtml = `
       <div class="modal-overlay active" style="z-index:9999;background:rgba(0,0,0,0.85)" onclick="App.closePreviewFileModal(event)">
@@ -1545,8 +1661,10 @@ const App = {
     this.previewKeyHandler = (e) => { if (e.key === 'Escape') this.closePreviewFileModal(); };
     document.addEventListener('keydown', this.previewKeyHandler);
     
+    const resolvedType = fileType || (name.toLowerCase().endsWith('.3mf') ? '3mf' : (name.toLowerCase().endsWith('.gcode') || name.toLowerCase().endsWith('.bgcode') ? 'gcode' : 'stl'));
+
     setTimeout(() => {
-      Viewer.create('full-preview-viewer', url, name.toLowerCase().endsWith('.3mf') ? '3mf' : 'stl');
+      Viewer.create('full-preview-viewer', url, resolvedType);
     }, 100);
   },
 
@@ -1884,12 +2002,17 @@ const App = {
         const model = await API.createModel(data);
         // Upload pending files if any
         if (this.pendingFiles.length > 0) {
+          const submitBtn = document.getElementById('model-submit-btn');
+          if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = 'Uploading files...'; }
+          const progress = document.getElementById('create-upload-progress');
           try {
             const uploadOpts = {
               parent_folder: data.parent_folder,
               create_subfolder: data.create_subfolder
             };
-            await API.uploadFiles(model.id, this.pendingFiles, uploadOpts);
+            await API.uploadFiles(model.id, this.pendingFiles, uploadOpts, (p) => {
+              if (progress) progress.innerHTML = UI.uploadProgressBox(p);
+            });
             this.toast(`Model created with ${this.pendingFiles.length} file(s)`);
           } catch (ue) {
             this.toast('Model created but file upload failed: ' + ue.message, 'error');
@@ -1971,15 +2094,19 @@ const App = {
       return;
     }
     const progress = document.getElementById('upload-progress');
-    if (progress) progress.innerHTML = `<div style="color:var(--accent-cyan);font-size:.875rem">⏳ Uploading ${files.length} file(s)...</div>`;
+    const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+    if (progress) progress.innerHTML = UI.uploadProgressBox({ percent: 0, loaded: 0, total: totalSize, speed: 0, etaSec: 0 });
+    
     try {
-      await API.uploadFiles(modelId, files);
+      await API.uploadFiles(modelId, files, {}, (p) => {
+        if (progress) progress.innerHTML = UI.uploadProgressBox(p);
+      });
       this.toast(`${files.length} file(s) uploaded`);
       this.closeModal();
       this.renderModelDetail(modelId);
     } catch (e) {
       this.toast(e.message, 'error');
-      if (progress) progress.innerHTML = `<div style="color:var(--error);font-size:.875rem">❌ ${e.message}</div>`;
+      if (progress) progress.innerHTML = `<div style="color:var(--error);font-size:.875rem;margin-top:8px">❌ ${e.message}</div>`;
     }
   },
 
