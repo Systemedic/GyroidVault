@@ -267,6 +267,7 @@ async function initDatabase() {
     
     if (!mCols.some(c => c.name === 'parent_id')) db.run('ALTER TABLE models ADD COLUMN parent_id INTEGER');
     if (!mCols.some(c => c.name === 'source_url')) db.run('ALTER TABLE models ADD COLUMN source_url TEXT');
+    if (!mCols.some(c => c.name === 'preview_file_id')) db.run('ALTER TABLE models ADD COLUMN preview_file_id INTEGER');
   } catch (e) { console.error('User migration failed:', e); }
 
   // Ensure metadata and library_path columns exist for existing databases
@@ -288,31 +289,43 @@ async function initDatabase() {
     if (!mCols2.some(c => c.name === 'custom_meta')) {
       db.run('ALTER TABLE models ADD COLUMN custom_meta TEXT DEFAULT "{}"');
     }
+    if (!mCols2.some(c => c.name === 'preview_file_id')) {
+      db.run('ALTER TABLE models ADD COLUMN preview_file_id INTEGER');
+    }
   } catch (e) { console.error('Migration failed:', e); }
 
-  // ─── Seed Data ───────────────────────────────────────────────────────
-  const seedMaterials = [
-    { name: 'PLA', is_preset: 1 },
-    { name: 'PETG', is_preset: 1 },
-    { name: 'ABS', is_preset: 1 },
-    { name: 'ASA', is_preset: 1 },
-    { name: 'TPU', is_preset: 1 },
-  ];
+  // ─── Seed Data (One-time only on initial setup) ───────────────────────
+  const seeded = get("SELECT value FROM system_settings WHERE key = 'seeded_defaults'");
+  if (!seeded) {
+    const existingCats = all("SELECT id FROM categories");
+    const existingMats = all("SELECT id FROM materials");
+    
+    if (existingCats.length === 0 && existingMats.length === 0) {
+      const seedMaterials = [
+        { name: 'PLA', is_preset: 1 },
+        { name: 'PETG', is_preset: 1 },
+        { name: 'ABS', is_preset: 1 },
+        { name: 'ASA', is_preset: 1 },
+        { name: 'TPU', is_preset: 1 },
+      ];
 
-  const seedCategories = [
-    { name: 'Functional', color: '#00d4ff' },
-    { name: 'Decorative', color: '#8b5cf6' },
-    { name: 'Mechanical', color: '#f59e0b' },
-    { name: 'Figurines', color: '#ec4899' },
-    { name: 'Tools', color: '#10b981' },
-    { name: 'Other', color: '#64748b' },
-  ];
+      const seedCategories = [
+        { name: 'Functional', color: '#00d4ff' },
+        { name: 'Decorative', color: '#8b5cf6' },
+        { name: 'Mechanical', color: '#f59e0b' },
+        { name: 'Figurines', color: '#ec4899' },
+        { name: 'Tools', color: '#10b981' },
+        { name: 'Other', color: '#64748b' },
+      ];
 
-  for (const m of seedMaterials) {
-    db.run('INSERT OR IGNORE INTO materials (name, is_preset) VALUES (?, ?)', [m.name, m.is_preset]);
-  }
-  for (const c of seedCategories) {
-    db.run('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [c.name, c.color]);
+      for (const m of seedMaterials) {
+        db.run('INSERT OR IGNORE INTO materials (name, is_preset) VALUES (?, ?)', [m.name, m.is_preset]);
+      }
+      for (const c of seedCategories) {
+        db.run('INSERT OR IGNORE INTO categories (name, color) VALUES (?, ?)', [c.name, c.color]);
+      }
+    }
+    db.run("INSERT OR REPLACE INTO system_settings (key, value) VALUES ('seeded_defaults', 'true')");
   }
 
   saveDb();

@@ -16,8 +16,9 @@ const storage = multer.diskStorage({
   }
 });
 
+const ALLOWED_EXTENSIONS = ['.stl', '.gcode', '.bgcode', '.3mf', '.obj', '.step', '.stp', '.f3d', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.txt', '.md'];
+
 const fileFilter = (req, file, cb) => {
-  const allowedExtensions = ['.stl', '.gcode', '.3mf', '.obj', '.step', '.stp', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf', '.txt', '.md'];
   const ext = path.extname(file.originalname).toLowerCase();
   
   // Check for double extensions or dangerous intermediate extensions
@@ -27,7 +28,7 @@ const fileFilter = (req, file, cb) => {
   
   if (hasDangerousExt) {
     cb(new Error(`Double extension or dangerous intermediate extension detected in "${file.originalname}".`), false);
-  } else if (allowedExtensions.includes(ext)) {
+  } else if (ALLOWED_EXTENSIONS.includes(ext)) {
     cb(null, true);
   } else {
     cb(new Error(`File type ${ext} is not supported.`), false);
@@ -37,8 +38,8 @@ const fileFilter = (req, file, cb) => {
 const getFileType = (filename) => {
   const ext = path.extname(filename).toLowerCase();
   const typeMap = {
-    '.stl': 'stl', '.gcode': 'gcode', '.3mf': '3mf', '.obj': 'obj',
-    '.step': 'step', '.stp': 'step',
+    '.stl': 'stl', '.gcode': 'gcode', '.bgcode': 'gcode', '.3mf': '3mf', '.obj': 'obj',
+    '.step': 'step', '.stp': 'step', '.f3d': 'f3d',
     '.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.gif': 'image', '.webp': 'image',
     '.pdf': 'document', '.txt': 'document', '.md': 'document'
   };
@@ -49,4 +50,4 @@ const upload = multer({ storage, fileFilter, limits: { fileSize: 500 * 1024 * 10
 
 function setUploadsDir(dir) { UPLOADS_DIR = dir; }
 
-module.exports = { upload, getFileType, setUploadsDir };
+module.exports = { upload, getFileType, setUploadsDir, ALLOWED_EXTENSIONS };

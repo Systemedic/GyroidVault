@@ -108,18 +108,61 @@ const API = {
   },
 
   // Files
-  async uploadFiles(modelId, files, options = {}) {
-    const form = new FormData();
-    for (const f of files) form.append('files', f);
-    if (options.parent_folder) form.append('parent_folder', options.parent_folder);
-    if (options.create_subfolder !== undefined) form.append('create_subfolder', options.create_subfolder);
-    
-    const csrfToken = localStorage.getItem('pv_csrf_token');
-    const headers = {};
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
-    const res = await fetch(`/api/models/${modelId}/files`, { method: 'POST', body: form, headers, credentials: 'same-origin' });
-    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Upload failed'); }
-    return res.json();
+  uploadFiles(modelId, files, options = {}, onProgress = null) {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      for (const f of files) form.append('files', f);
+      if (options.parent_folder) form.append('parent_folder', options.parent_folder);
+      if (options.create_subfolder !== undefined) form.append('create_subfolder', options.create_subfolder);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `/api/models/${modelId}/files`);
+      xhr.withCredentials = true;
+
+      const csrfToken = localStorage.getItem('pv_csrf_token');
+      if (csrfToken) xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+
+      const startTime = Date.now();
+      if (xhr.upload && typeof onProgress === 'function') {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = Math.min(99, Math.round((e.loaded / e.total) * 100));
+            const elapsed = Math.max(0.1, (Date.now() - startTime) / 1000);
+            const speed = e.loaded / elapsed; // bytes/sec
+            const remaining = Math.max(0, e.total - e.loaded);
+            const etaSec = speed > 0 ? Math.round(remaining / speed) : 0;
+            
+            onProgress({
+              percent,
+              loaded: e.loaded,
+              total: e.total,
+              speed,
+              etaSec
+            });
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch (err) {
+            resolve(xhr.responseText);
+          }
+        } else {
+          let errMessage = 'Upload failed';
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res.error) errMessage = res.error;
+          } catch (e) {}
+          reject(new Error(errMessage));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(form);
+    });
   },
   async uploadThumbnail(modelId, file) {
     const form = new FormData();
@@ -130,6 +173,12 @@ const API = {
     const res = await fetch(`/api/models/${modelId}/thumbnail`, { method: 'POST', body: form, headers, credentials: 'same-origin' });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Upload failed'); }
     return res.json();
+  },
+  setPreviewFile(modelId, fileId) {
+    return this.request(`/api/models/${modelId}/preview-file`, {
+      method: 'PUT',
+      body: JSON.stringify({ file_id: fileId })
+    });
   },
   deleteFile(id, deleteDisk = false) { 
     return this.request(`/api/files/${id}?deleteDisk=${deleteDisk}`, { method: 'DELETE' }); 

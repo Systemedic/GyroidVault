@@ -33,9 +33,11 @@ const UI = {
     const icons = {
       stl: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>',
       gcode: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12H9"></path><path d="M15 9H9"></path><path d="M12 15H9"></path></svg>',
+      bgcode: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12H9"></path><path d="M15 9H9"></path><path d="M12 15H9"></path></svg>',
       image: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>',
       '3mf': '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>',
       step: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11.5 2.1-4.8 1.4c-.6.2-1 .6-1.1 1.2l-.7 4.2c-.1.5.1 1 .5 1.3l3.2 2.7c.4.3.9.4 1.4.2l4.8-1.4c.6-.2 1-.6 1.1-1.2l.7-4.2c.1-.5-.1-1-.5-1.3L12.9 2.3c-.4-.3-.9-.4-1.4-.2Z"></path><path d="M6 15v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"></path><path d="m12 11 4 3"></path><path d="m12 11-4 3"></path><path d="M12 11v6"></path></svg>',
+      f3d: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><path d="M3.27 6.96L12 12.01l8.73-5.05"></path><path d="M12 22.08V12"></path></svg>',
       obj: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>'
     };
     const icon = icons[type] || `<span style="font-size:.65rem">${type.toUpperCase().substring(0,3)}</span>`;
@@ -130,14 +132,17 @@ const UI = {
   },
 
   browseFileCard(file) {
-    const isPreviewable = file.type === 'stl' || file.type === '3mf';
+    const is3D = file.type === 'stl' || file.type === '3mf';
+    const isGcode = file.type === 'gcode';
     let thumb;
     if (file.thumbnailUrl) {
       thumb = `<img src="${file.thumbnailUrl}" alt="${file.name}">`;
-    } else if (isPreviewable) {
+    } else if (is3D) {
       thumb = `<div class="model-card-placeholder stl-thumb-target" data-stl-url="${file.url}?t=${Date.now()}" style="background:${this.gradient(file.name)}">📦</div>`;
     } else if (file.type === 'image') {
       thumb = `<img src="${file.url}" alt="${file.name}">`;
+    } else if (isGcode) {
+      thumb = `<div class="model-card-placeholder" style="background:linear-gradient(135deg, #78350f, #b45309);color:#fbbf24;font-size:2.5rem;display:flex;align-items:center;justify-content:center">🖨️</div>`;
     } else {
       thumb = `<div class="model-card-placeholder" style="background:${this.gradient(file.name)}">📦</div>`;
     }
@@ -146,15 +151,29 @@ const UI = {
     const itemPath = `${file.folderPath ? file.folderPath+'/' : ''}${file.name}`;
     const isSelected = App.selectedBrowsePaths?.includes(itemPath);
     
-    const clickHandler = isPreviewable ? `onclick="App.previewFileModal('${file.url}', '${file.name}')" style="cursor:pointer"` : '';
+    // Metadata summary chips
+    let metaChips = '';
+    if (file.metadata) {
+      const chips = [];
+      if (file.metadata.printTime) chips.push(`⏱️ ${file.metadata.printTime}`);
+      if (file.metadata.filamentType) chips.push(`🧵 ${file.metadata.filamentType}`);
+      if (file.metadata.tempNozzle) chips.push(`🌡️ ${file.metadata.tempNozzle}°C`);
+      if (chips.length) {
+        metaChips = `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${chips.map(c => `<span style="font-size:0.65rem;background:var(--bg-input);padding:1px 5px;border-radius:4px;color:var(--text-secondary);border:1px solid var(--border)">${c}</span>`).join('')}</div>`;
+      }
+    }
+
+    const clickData = encodeURIComponent(JSON.stringify(file));
+    const clickHandler = `onclick="App.openBrowseFileModal('${clickData}')" style="cursor:pointer"`;
 
     return `<div class="model-card ${isSelected ? 'selected' : ''}" data-path="${itemPath}" draggable="true" ondragstart="App.handleDragStart(event, '${itemPath}')" ${clickHandler}>
       <div class="model-card-checkbox" onclick="event.stopPropagation(); App.toggleBrowseSelection('${itemPath}')"></div>
-      <div class="model-card-thumb">${thumb}<div class="model-card-badges"><span class="badge badge-${file.type}">${file.type}</span></div></div>
+      <div class="model-card-thumb">${thumb}<div class="model-card-badges"><span class="badge badge-${file.ext || file.type}">${file.ext || file.type}</span></div></div>
       <div class="model-card-body">
-        <div class="model-card-name">${file.name}</div>
+        <div class="model-card-name" title="${file.name}">${file.name}</div>
         ${folderLabel}
         <div class="model-card-meta" style="font-size:.75rem;color:var(--text-muted)">${this.formatSize(file.size)}</div>
+        ${metaChips}
       </div>
     </div>`;
   },
@@ -524,16 +543,21 @@ const UI = {
 
     const filesHtml = (model.files || []).filter(f => f.file_type !== 'document').map(f => {
       let metaHtml = '';
+      const isPreview = Boolean(f.is_preview || f.id === model.preview_file_id);
 
       return `
       <div class="file-item">
         ${this.fileTypeIcon(f.file_type)}
         <div class="file-info">
-          <div class="file-name">${f.original_name}</div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="file-name">${f.original_name}</span>
+            ${isPreview ? `<span class="badge-preview">★ Primary Preview</span>` : ''}
+          </div>
           <div class="file-meta">${this.formatSize(f.file_size)} · ${this.formatDate(f.uploaded_at)} · 👤 ${f.uploader_name || 'System'}</div>
           ${metaHtml}
         </div>
         <div class="file-actions" style="display:flex;gap:4px;align-items:center">
+          ${(canEdit && !isPreview && (f.file_type === 'stl' || f.file_type === '3mf')) ? `<button class="btn btn-ghost btn-xs" style="color:var(--text-muted);font-size:0.7rem;border:1px solid var(--border);padding:3px 8px;border-radius:4px" onclick="event.stopPropagation();App.setPreviewFile(${model.id}, ${f.id})" title="Use this file as the model 3D preview">Set as Preview</button>` : ''}
           ${(f.file_type === 'stl' || f.file_type === '3mf') ? (() => {
             const slicerLinks = {
               'orcaslicer': { name: 'OrcaSlicer', url: `orcaslicer://open?file=${encodeURI(window.location.origin + '/api/files/' + f.id + '/download/model.' + f.file_type)}` },
@@ -649,7 +673,7 @@ const UI = {
           ${model.description ? `
           <div class="glass-panel" style="margin-bottom:24px">
             <div class="panel-header"><div class="panel-title">📝 Description</div></div>
-            <div class="panel-body"><div class="detail-description">${model.description}</div></div>
+            <div class="panel-body"><div class="detail-description">${this.renderMarkdown(model.description)}</div></div>
           </div>` : ''}
           ${(tags || sourceLink) ? `
           <div class="glass-panel" style="margin-bottom:24px">
@@ -668,10 +692,12 @@ const UI = {
           <div class="glass-panel">
             <div class="panel-header">
               <div class="panel-title">🖨 Print History</div>
-              <button class="btn btn-success btn-xs" onclick="App.showLogPrint(${model.id})">+ Log Print</button>
+              <button class="btn btn-secondary btn-sm" onclick="App.showLogPrint(${model.id})">+ Log Print</button>
             </div>
-            <div class="panel-body no-pad">
-              ${printsHtml || '<div class="empty-state" style="padding:30px"><div class="empty-state-text">No prints logged</div><div class="empty-state-sub">Log your first print</div></div>'}
+            <div class="panel-body">
+              <div class="print-history-list">
+                ${printsHtml || '<div style="color:var(--text-muted);font-size:.875rem;text-align:center;padding:16px 0">No prints recorded yet</div>'}
+              </div>
             </div>
           </div>
 
@@ -752,8 +778,15 @@ const UI = {
           <input class="form-input" type="url" name="source_url" value="${model?.source_url || ''}" placeholder="e.g. https://www.printables.com/...">
         </div>
         <div class="form-group">
-          <label class="form-label">Description</label>
-          <textarea class="form-textarea" name="description" placeholder="Describe this model...">${model?.description || ''}</textarea>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <label class="form-label" style="margin-bottom:0">Description (Markdown)</label>
+            <div style="display:flex;gap:4px">
+              <button type="button" class="btn btn-ghost btn-xs active" id="desc-tab-write" onclick="App.toggleDescTab('write')" style="padding:2px 8px;font-size:0.75rem">Write</button>
+              <button type="button" class="btn btn-ghost btn-xs" id="desc-tab-preview" onclick="App.toggleDescTab('preview')" style="padding:2px 8px;font-size:0.75rem">Preview</button>
+            </div>
+          </div>
+          <textarea class="form-textarea" id="model-description-input" name="description" placeholder="Describe this model using Markdown formatting, lists, links, images..." rows="4">${model?.description || ''}</textarea>
+          <div id="model-description-preview" class="glass-panel" style="display:none;padding:12px;min-height:90px;max-height:220px;overflow-y:auto;background:var(--bg-input)"></div>
         </div>
         <div class="form-group">
           <label class="form-label">Print Tips</label>
@@ -771,21 +804,22 @@ const UI = {
         </div>
         ${!isEdit ? `
         <div class="form-group">
-          <label class="form-label">Files (optional)</label>
-          <div class="upload-zone" id="create-upload-zone" style="padding:20px"
-            onclick="document.getElementById('create-file-input').click()"
+          <label class="form-label">Files (Optional)</label>
+          <div class="upload-zone" id="create-upload-zone" onclick="document.getElementById('create-file-input').click()"
             ondragover="event.preventDefault();this.classList.add('dragover')"
             ondragleave="this.classList.remove('dragover')"
             ondrop="event.preventDefault();this.classList.remove('dragover');App.handleCreateFileDrop(event)">
+            <div class="upload-zone-icon">📁</div>
             <div class="upload-zone-text"><strong>Click to browse</strong> or drag & drop files</div>
-            <div style="color:var(--text-muted);font-size:.7rem;margin-top:4px">STL · Gcode · 3MF · OBJ · STEP · Images · Documents</div>
-            <input type="file" id="create-file-input" multiple accept=".stl,.gcode,.3mf,.obj,.step,.stp,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md" onchange="App.handleCreateFileSelect(event)">
+            <div style="color:var(--text-muted);font-size:.7rem;margin-top:4px">STL · Gcode · BGCODE · 3MF · OBJ · STEP · F3D · Images · Documents</div>
+            <input type="file" id="create-file-input" multiple accept=".stl,.gcode,.bgcode,.3mf,.obj,.step,.stp,.f3d,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md" onchange="App.handleCreateFileSelect(event)">
           </div>
           <div id="create-file-list" class="upload-file-list" style="display:none"></div>
+          <div id="create-upload-progress" style="margin-top:12px"></div>
         </div>` : ''}
         <div class="form-actions">
           <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
-          <button type="submit" class="btn btn-primary">${isEdit ? 'Save Changes' : 'Create Model'}</button>
+          <button type="submit" class="btn btn-primary" id="model-submit-btn">${isEdit ? 'Save Changes' : 'Create Model'}</button>
         </div>
       </form>`;
   },
@@ -799,10 +833,10 @@ const UI = {
         ondrop="event.preventDefault();this.classList.remove('dragover');App.handleFileDrop(event,${modelId})">
         <div class="upload-zone-icon">📁</div>
         <div class="upload-zone-text"><strong>Click to browse</strong> or drag & drop files</div>
-        <div style="color:var(--text-muted);font-size:.75rem;margin-top:6px">STL · Gcode · 3MF · OBJ · STEP · Images · Documents</div>
-        <input type="file" id="file-input" multiple accept=".stl,.gcode,.3mf,.obj,.step,.stp,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md" onchange="App.handleFileSelect(event,${modelId})">
+        <div style="color:var(--text-muted);font-size:.75rem;margin-top:6px">STL · Gcode · BGCODE · 3MF · OBJ · STEP · F3D · Images · Documents</div>
+        <input type="file" id="file-input" multiple accept=".stl,.gcode,.bgcode,.3mf,.obj,.step,.stp,.f3d,.png,.jpg,.jpeg,.gif,.webp,.pdf,.txt,.md" onchange="App.handleFileSelect(event,${modelId})">
       </div>
-      <div id="upload-progress" style="margin-top:16px"></div>`;
+      <div id="upload-progress" style="margin-top:14px"></div>`;
   },
 
   // ── Log Print Form ──
@@ -1007,12 +1041,28 @@ const UI = {
       materials: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.6"><path d="M12 2L2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg>'
     };
 
+    const defaultMatBlock = type === 'materials' ? `
+      <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+        <label class="form-label" style="margin-bottom:6px">Default Print Material</label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <select class="form-select" id="default-material-select" onchange="App.setDefaultMaterial(this.value)" style="max-width:220px">
+            ${items.map(m => {
+              const def = localStorage.getItem('gv_default_material') || 'PLA';
+              const isSel = (String(m.id) === String(def) || m.name.toLowerCase() === def.toLowerCase());
+              return `<option value="${m.id}" ${isSel ? 'selected' : ''}>${m.name}</option>`;
+            }).join('')}
+          </select>
+          <span style="font-size:0.75rem;color:var(--text-muted)">Pre-selected when logging new prints</span>
+        </div>
+      </div>` : '';
+
     return `<div class="glass-panel">
       <div class="panel-header"><div class="panel-title">${iconMap[type] || ''} ${title}</div></div>
       <div class="panel-body">
+        ${defaultMatBlock}
         ${listHtml || '<div style="color:var(--text-muted);font-size:.875rem;padding:8px 0">None yet</div>'}
         ${App.currentUser?.role === 'admin' ? `
-        <div class="add-inline">
+        <div class="add-inline" style="margin-top:14px">
           <input class="form-input" id="add-${type}-input" placeholder="Add new ${type.slice(0,-1)}...">
           ${colorInput}
           <button class="btn btn-primary btn-sm" onclick="App.addSettingsItem('${type}')">Add</button>
@@ -1531,21 +1581,82 @@ const UI = {
 
   renderMarkdown(text) {
     if (!text) return '';
-    return text
-      // Headers
-      .replace(/^### (.*$)/gim, '<h4 style="margin:16px 0 8px;color:var(--text-primary)">$1</h4>')
-      .replace(/^## (.*$)/gim, '<h3 style="margin:20px 0 10px;color:var(--accent-cyan)">$1</h3>')
-      .replace(/^# (.*$)/gim, '<h2 style="margin:24px 0 12px;color:var(--accent-cyan)">$1</h2>')
-      // Bold
-      .replace(/\*\*(.*)\*\*/gim, '<strong>$1</strong>')
-      // Italic
-      .replace(/\*(.*)\*/gim, '<em>$1</em>')
-      // Lists
-      .replace(/^\* (.*$)/gim, '<li style="margin-left:20px;margin-bottom:4px">$1</li>')
-      .replace(/^- (.*$)/gim, '<li style="margin-left:20px;margin-bottom:4px">$1</li>')
-      // Links
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" target="_blank" style="color:var(--accent-cyan)">$1</a>')
-      // Newlines to BR
-      .replace(/\n/gim, '<br>');
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    // Fenced code blocks
+    escaped = escaped.replace(/```([\s\S]*?)```/g, (m, code) => `<pre><code>${code.trim()}</code></pre>`);
+    
+    // Inline code
+    escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Headers
+    escaped = escaped.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
+    escaped = escaped.replace(/^### (.*$)/gim, '<h3>$1</h3>');
+    escaped = escaped.replace(/^## (.*$)/gim, '<h2>$1</h2>');
+    escaped = escaped.replace(/^# (.*$)/gim, '<h1>$1</h1>');
+
+    // Bold / Italic / Strike
+    escaped = escaped.replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    escaped = escaped.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    escaped = escaped.replace(/~~(.*?)~~/g, '<del>$1</del>');
+
+    // Blockquotes
+    escaped = escaped.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
+
+    // Horizontal Rule
+    escaped = escaped.replace(/^---$/gim, '<hr>');
+
+    // Images
+    escaped = escaped.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" loading="lazy">');
+
+    // Links
+    escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    // Lists
+    escaped = escaped.replace(/^\s*[-*+]\s+(.*)$/gim, '<li style="margin-left:20px">$1</li>');
+    escaped = escaped.replace(/^\s*\d+\.\s+(.*)$/gim, '<li style="margin-left:20px">$1</li>');
+
+    // Newlines to BR
+    escaped = escaped.replace(/\n/gim, '<br>');
+
+    return `<div class="markdown-body">${escaped}</div>`;
+  },
+
+  uploadProgressBox(progress = {}) {
+    const { percent = 0, loaded = 0, total = 0, speed = 0, etaSec = 0 } = progress;
+    const speedStr = speed > 1024 * 1024 
+      ? `${(speed / (1024 * 1024)).toFixed(1)} MB/s` 
+      : `${(speed / 1024).toFixed(0)} KB/s`;
+    
+    let etaStr = '';
+    if (etaSec > 60) {
+      const m = Math.floor(etaSec / 60);
+      const s = etaSec % 60;
+      etaStr = `~${m}m ${s}s remaining`;
+    } else if (etaSec > 0) {
+      etaStr = `~${etaSec}s remaining`;
+    } else {
+      etaStr = 'Finishing...';
+    }
+
+    return `
+      <div class="upload-progress-box">
+        <div class="upload-progress-header">
+          <span style="color:var(--accent-cyan)">⏳ Uploading...</span>
+          <span style="font-weight:700">${percent}%</span>
+        </div>
+        <div class="upload-progress-track">
+          <div class="upload-progress-fill" style="width:${percent}%"></div>
+        </div>
+        <div class="upload-progress-footer">
+          <span>${this.formatSize(loaded)} / ${this.formatSize(total)} (${speedStr})</span>
+          <span>${etaStr}</span>
+        </div>
+      </div>
+    `;
   }
 };
