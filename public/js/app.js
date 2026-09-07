@@ -9,9 +9,6 @@ const App = {
   selectedBrowsePaths: [],
   versionInfo: null,
   libraryViewMode: 'grid',
-  modalBaseline: null,
-  overlayPressed: false,
-  overlayReleased: false,
 
   // ── Init ──
   async init() {
@@ -313,36 +310,9 @@ const App = {
     document.getElementById('modal-title').textContent = title;
     document.getElementById('modal-body').innerHTML = content;
     document.getElementById('modal-overlay').classList.add('active');
-    this.modalBaseline = this.snapshotModal();
   },
   closeModal() {
     document.getElementById('modal-overlay').classList.remove('active');
-    this.modalBaseline = null;
-  },
-  snapshotModal() {
-    const form = document.getElementById('modal-body')?.querySelector('form');
-    if (!form) return null;
-    return JSON.stringify(Array.from(new FormData(form)).filter(([, v]) => typeof v === 'string'));
-  },
-  isModalDirty() {
-    // Files staged in the New Model form aren't part of FormData
-    if (document.getElementById('create-file-input') && this.pendingFiles.length) return true;
-    const current = this.snapshotModal();
-    return current !== null && this.modalBaseline !== null && current !== this.modalBaseline;
-  },
-  dismissModal() {
-    if (this.isModalDirty() && !confirm('Are you sure you want to close this? Your unsaved changes will be lost.')) return;
-    this.closeModal();
-  },
-
-  // ── Overlay click guard (press AND release must land on the overlay) ──
-  overlayMouseDown(e) { this.overlayPressed = e.target === e.currentTarget; },
-  overlayMouseUp(e) { this.overlayReleased = e.target === e.currentTarget; },
-  overlayClicked(e) {
-    const cleanClick = this.overlayPressed && this.overlayReleased && e.target === e.currentTarget;
-    this.overlayPressed = false;
-    this.overlayReleased = false;
-    return cleanClick;
   },
 
   // ─── Dashboard ────────────────────────────────────────────────────────
@@ -1669,10 +1639,7 @@ const App = {
   previewFileModal(url, name, fileType = null) {
     if (typeof Viewer === 'undefined') return;
     const modalHtml = `
-      <div class="modal-overlay active" style="z-index:9999;background:rgba(0,0,0,0.85)"
-        onmousedown="App.overlayMouseDown(event)"
-        onmouseup="App.overlayMouseUp(event)"
-        onclick="if(App.overlayClicked(event))App.closePreviewFileModal(event)">
+      <div class="modal-overlay active" style="z-index:9999;background:rgba(0,0,0,0.85)" onclick="App.closePreviewFileModal(event)">
         <div class="modal" style="width:96vw;max-width:1400px;height:92vh;max-height:92vh;display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
           <div class="modal-header" style="padding:16px 24px">
             <h5 class="modal-title" style="margin:0">${name}</h5>
@@ -2353,19 +2320,13 @@ const App = {
 };
 
 // ── Close modal on overlay click ──
-const modalOverlay = document.getElementById('modal-overlay');
-modalOverlay?.addEventListener('mousedown', (e) => App.overlayMouseDown(e));
-modalOverlay?.addEventListener('mouseup', (e) => App.overlayMouseUp(e));
-modalOverlay?.addEventListener('click', (e) => {
-  if (App.overlayClicked(e)) App.dismissModal();
+document.getElementById('modal-overlay')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) App.closeModal();
 });
 
 // ── Close modal on Escape & Ctrl+K search shortcut ──
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    if (document.getElementById('preview-modal-container')) return; // preview has its own handler
-    if (document.getElementById('modal-overlay')?.classList.contains('active')) App.dismissModal();
-  }
+  if (e.key === 'Escape') App.closeModal();
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault();
     const searchInput = document.getElementById('search-input');
